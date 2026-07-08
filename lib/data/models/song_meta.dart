@@ -4,6 +4,7 @@ class SongMeta {
   final int duration;
   final String? album;
   final String? artworkUrl;
+  final int position; // Current playback position in ms
 
   SongMeta({
     required this.title,
@@ -11,6 +12,7 @@ class SongMeta {
     required this.duration,
     this.album,
     this.artworkUrl,
+    this.position = 0,
   });
 
   factory SongMeta.fromJson(Map<String, dynamic> json) {
@@ -20,6 +22,7 @@ class SongMeta {
       duration: json['duration'] as int,
       album: json['album'] as String?,
       artworkUrl: json['artworkUrl'] as String?,
+      position: json['position'] as int? ?? 0,
     );
   }
 
@@ -29,5 +32,6 @@ class SongMeta {
     'duration': duration,
     'album': album,
     'artworkUrl': artworkUrl,
+    'position': position,
   };
 }

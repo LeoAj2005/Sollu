@@ -3,14 +3,29 @@ import 'package:flutter/services.dart';
 import '../../data/models/song_meta.dart';
 
 class MediaSessionService {
-  static const MethodChannel _channel = MethodChannel('io.github.teccheck.fastlyrics/media');
-  static MediaSessionService? _instance;
+  static const EventChannel _eventChannel = EventChannel('io.github.sollu/media_events');
+  static const MethodChannel _methodChannel = MethodChannel('io.github.sollu/media');
   
+  static MediaSessionService? _instance;
   final StreamController<SongMeta?> _songController = StreamController.broadcast();
   SongMeta? _currentSong;
+  Timer? _positionTimer;
   
   MediaSessionService._() {
-    _channel.setMethodCallHandler(_handleMethodCall);
+    _eventChannel.receiveBroadcastStream().listen((dynamic data) {
+      if (data is Map) {
+        _currentSong = SongMeta(
+          title: data['title'] as String? ?? 'Unknown',
+          artist: data['artist'] as String? ?? 'Unknown',
+          duration: data['duration'] as int? ?? 0,
+          position: data['position'] as int? ?? 0,
+        );
+        _songController.add(_currentSong);
+        _startPositionTimer();
+      }
+    }, onError: (e) {
+      // Handle error
+    });
   }
   
   static MediaSessionService get instance {
@@ -18,40 +33,48 @@ class MediaSessionService {
     return _instance!;
   }
   
+  // Add this method to satisfy main.dart and initialization_service.dart
+  Future<void> initialize() async {
+    // Initialization is handled in the constructor, but we provide this
+    // for an explicit initialization point if needed later.
+  }
+  
   Stream<SongMeta?> get currentSongStream => _songController.stream;
   SongMeta? get currentSong => _currentSong;
   
-  Future<void> initialize() async {
+  void _startPositionTimer() {
+    _positionTimer?.cancel();
+    _positionTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (_currentSong != null && _currentSong!.duration > 0) {
+        _currentSong = SongMeta(
+          title: _currentSong!.title,
+          artist: _currentSong!.artist,
+          duration: _currentSong!.duration,
+          position: _currentSong!.position + 1000,
+        );
+        _songController.add(_currentSong);
+      }
+    });
+  }
+  
+  Future<bool> checkPermission() async {
     try {
-      final song = await _channel.invokeMethod<Map>('getCurrentSong');
-      _updateCurrentSong(song);
+      return await _methodChannel.invokeMethod('checkPermission');
     } catch (e) {
-      // Platform error handling
+      return false;
     }
   }
   
-  Future<dynamic> _handleMethodCall(MethodCall call) async {
-    if (call.method == 'onSongChanged') {
-      _updateCurrentSong(call.arguments as Map?);
+  Future<void> requestPermission() async {
+    try {
+      await _methodChannel.invokeMethod('requestPermission');
+    } catch (e) {
+      // Handle error
     }
-  }
-  
-  void _updateCurrentSong(Map? data) {
-    if (data == null) {
-      _currentSong = null;
-    } else {
-      _currentSong = SongMeta(
-        title: data['title'] as String? ?? 'Unknown',
-        artist: data['artist'] as String? ?? 'Unknown',
-        duration: data['duration'] as int? ?? 0,
-        album: data['album'] as String?,
-        artworkUrl: data['artworkUrl'] as String?,
-      );
-    }
-    _songController.add(_currentSong);
   }
   
   void dispose() {
+    _positionTimer?.cancel();
     _songController.close();
   }
 }

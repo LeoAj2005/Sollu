@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../providers/providers.dart';
-import '../../data/models/song_meta.dart';
+import 'package:sollu/presentation/providers/providers.dart';
+import 'package:sollu/data/models/song_meta.dart';
+import 'package:sollu/presentation/widgets/lyrics_widget.dart';
+import 'package:sollu/presentation/widgets/song_info_widget.dart';
 
 class SearchScreen extends ConsumerStatefulWidget {
   const SearchScreen({super.key});
@@ -54,8 +56,44 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                 return ListTile(
                   title: Text(song.title),
                   subtitle: Text(song.artist),
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => SearchedLyricsScreen(song: song),
+                      ),
+                    );
+                  },
                 );
               },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class SearchedLyricsScreen extends ConsumerWidget {
+  final SongMeta song;
+  const SearchedLyricsScreen({super.key, required this.song});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final lyricsAsync = ref.watch(manualLyricsProvider(song));
+    
+    return Scaffold(
+      appBar: AppBar(title: Text(song.title)),
+      body: Column(
+        children: [
+          SongInfoWidget(song: song),
+          Expanded(
+            child: lyricsAsync.when(
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (e, _) => Center(child: Text('Error: $e')),
+              data: (lyrics) => lyrics == null 
+                  ? const Center(child: Text('No lyrics found'))
+                  : LyricsWidget(lyrics: lyrics, currentSong: song),
             ),
           ),
         ],

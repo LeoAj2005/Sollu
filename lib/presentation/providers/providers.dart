@@ -14,16 +14,29 @@ final currentSongProvider = StreamProvider<SongMeta?>((ref) {
 
 final lyricsProvider = FutureProvider<SongWithLyrics?>((ref) async {
   final song = ref.watch(currentSongProvider).value;
-  if (song == null) return null;
+  if (song == null || song.title == 'Unknown') return null;
 
   final api = ref.watch(apiServiceProvider);
   final storage = ref.watch(storageServiceProvider);
   
-  // Try local storage first
   final stored = await storage.getLyrics('${song.title}_${song.artist}');
   if (stored != null) return stored;
   
-  // Fetch from API
+  final lyrics = await api.fetchLyrics(song);
+  if (lyrics != null) {
+    await storage.insertLyrics(lyrics);
+  }
+  return lyrics;
+});
+
+// Provider for manually searching and viewing lyrics
+final manualLyricsProvider = FutureProvider.family<SongWithLyrics?, SongMeta>((ref, song) async {
+  final api = ref.watch(apiServiceProvider);
+  final storage = ref.watch(storageServiceProvider);
+  
+  final stored = await storage.getLyrics('${song.title}_${song.artist}');
+  if (stored != null) return stored;
+  
   final lyrics = await api.fetchLyrics(song);
   if (lyrics != null) {
     await storage.insertLyrics(lyrics);
