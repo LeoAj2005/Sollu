@@ -45,20 +45,19 @@ class _LyricsWidgetState extends State<LyricsWidget> {
     }
 
     if (newIndex != _currentLineIndex) {
-      setState(() {
-        _currentLineIndex = newIndex;
-      });
+      setState(() => _currentLineIndex = newIndex);
       _scrollToLine(newIndex);
     }
   }
 
   void _scrollToLine(int index) {
     if (!_scrollController.hasClients) return;
-    final offset = (index * 60.0) - 150; // Approximate line height - screen offset
+    // Approximate line height of 40.0
+    final offset = (index * 40.0) - (MediaQuery.of(context).size.height / 3);
     _scrollController.animateTo(
       offset.clamp(0.0, _scrollController.position.maxScrollExtent),
-      duration: const Duration(milliseconds: 300),
-      curve: Curves.easeInOut,
+      duration: const Duration(milliseconds: 400),
+      curve: Curves.easeOutCubic,
     );
   }
 
@@ -72,37 +71,56 @@ class _LyricsWidgetState extends State<LyricsWidget> {
   Widget build(BuildContext context) {
     if (widget.lyrics.lyricsType == LyricsType.synced && widget.lyrics.syncedLyrics != null) {
       final lines = widget.lyrics.syncedLyrics!.lines;
-      return ListView.builder(
-        controller: _scrollController,
-        padding: const EdgeInsets.all(16.0).copyWith(top: MediaQuery.of(context).size.height / 3, bottom: MediaQuery.of(context).size.height / 2),
-        itemCount: lines.length,
-        itemBuilder: (context, index) {
-          final isCurrent = index == _currentLineIndex;
-          return GestureDetector(
-            onTap: () {
-              // In a real app, you'd trigger a seek event to the media player here
-            },
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 8.0),
+      
+      return ShaderMask(
+        shaderCallback: (Rect bounds) {
+          return const LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Colors.transparent, Colors.black, Colors.transparent],
+            stops: [0.0, 0.2, 0.8],
+          ).createShader(bounds);
+        },
+        child: ListView.builder(
+          controller: _scrollController,
+          padding: EdgeInsets.only(
+            top: MediaQuery.of(context).size.height * 0.4,
+            bottom: MediaQuery.of(context).size.height * 0.4,
+          ),
+          itemCount: lines.length,
+          itemBuilder: (context, index) {
+            final isCurrent = index == _currentLineIndex;
+            return GestureDetector(
+              onTap: () {
+                // Future: implement seek
+              },
               child: AnimatedDefaultTextStyle(
                 duration: const Duration(milliseconds: 300),
+                curve: Curves.easeOut,
                 style: TextStyle(
-                  fontSize: isCurrent ? 24 : 18,
+                  fontSize: isCurrent ? 28 : 20,
+                  height: 1.5,
                   fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
-                  color: isCurrent ? Theme.of(context).colorScheme.primary : Theme.of(context).textTheme.bodyLarge?.color?.withValues(alpha: 0.5),
+                  color: isCurrent ? Colors.white : Colors.white.withValues(alpha: 0.4),
                 ),
-                child: Text(lines[index].text),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 24.0),
+                  child: Text(lines[index].text),
+                ),
               ),
-            ),
-          );
-        },
+            );
+          },
+        ),
       );
     } else if (widget.lyrics.lyrics != null) {
       return SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
-        child: Text(widget.lyrics.lyrics!, style: Theme.of(context).textTheme.bodyLarge),
+        padding: const EdgeInsets.all(24.0),
+        child: Text(
+          widget.lyrics.lyrics!,
+          style: const TextStyle(color: Colors.white, fontSize: 18, height: 1.6),
+        ),
       );
     }
-    return const Center(child: Text('No lyrics available'));
+    return const Center(child: Text('No lyrics available', style: TextStyle(color: Colors.white)));
   }
 }

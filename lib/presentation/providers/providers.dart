@@ -12,24 +12,59 @@ final currentSongProvider = StreamProvider<SongMeta?>((ref) {
   return MediaSessionService.instance.currentSongStream;
 });
 
-final lyricsProvider = FutureProvider<SongWithLyrics?>((ref) async {
+// Fetch high-res artwork
+final enrichedSongProvider = FutureProvider<SongMeta?>((ref) async {
   final song = ref.watch(currentSongProvider).value;
   if (song == null || song.title == 'Unknown') return null;
 
   final api = ref.watch(apiServiceProvider);
+  final artworkUrl = await api.fetchArtwork(song.title, song.artist);
+  
+  // Preserve the live position from the stream
+  return SongMeta(
+    title: song.title,
+    artist: song.artist,
+    duration: song.duration,
+    position: song.position,
+    album: song.album,
+    artworkUrl: artworkUrl,
+  );
+});
+
+// Trigger to force switch lyrics source
+final lyricsRefreshTriggerProvider = StateProvider<int>((ref) => 0);
+final skipSourceProvider = StateProvider<String?>((ref) => null);
+
+final lyricsProvider = FutureProvider<SongWithLyrics?>((ref) async {
+  // Watch the trigger and skipSource so it rebuilds when we change them
+  final trigger = ref.watch(lyricsRefreshTriggerProvider);
+  final skipSource = ref.watch(skipSourceProvider);
+  
+  // ONLY watch title and artist to prevent refetching on position updates!
+  final title = ref.watch(enrichedSongProvider.select((s) => s.value?.title));
+  final artist = ref.watch(enrichedSongProvider.select((s) => s.value?.artist));
+  final duration = ref.watch(enrichedSongProvider.select((s) => s.value?.duration));
+  
+  if (title == null || artist == null || title == 'Unknown') return null;
+
+  final api = ref.watch(apiServiceProvider);
   final storage = ref.watch(storageServiceProvider);
   
-  final stored = await storage.getLyrics('${song.title}_${song.artist}');
-  if (stored != null) return stored;
+  final songMeta = SongMeta(title: title, artist: artist, duration: duration ?? 0);
   
-  final lyrics = await api.fetchLyrics(song);
+  // Only use cache if we are NOT forcing a refresh
+  if (trigger == 0) {
+    final stored = await storage.getLyrics('${songMeta.title}_${songMeta.artist}');
+    if (stored != null) return stored;
+  }
+  
+  final lyrics = await api.fetchLyrics(songMeta, skipSource: skipSource);
   if (lyrics != null) {
     await storage.insertLyrics(lyrics);
   }
   return lyrics;
 });
 
-// Provider for manually searching and viewing lyrics
 final manualLyricsProvider = FutureProvider.family<SongWithLyrics?, SongMeta>((ref, song) async {
   final api = ref.watch(apiServiceProvider);
   final storage = ref.watch(storageServiceProvider);

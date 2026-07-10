@@ -10,35 +10,43 @@ import android.util.Log
 
 class NotificationListener : NotificationListenerService() {
 
+    // Companion object allows MainActivity or other components to access the active session globally
+    companion object {
+        var activeController: MediaController? = null
+    }
+
     private var activeControllers: MutableList<MediaController> = mutableListOf()
 
     override fun onListenerConnected() {
         super.onListenerConnected()
-        Log.d("FastLyrics", "Notification Listener Connected")
+        Log.d("Sollu", "Notification Listener Connected")
         
         val mediaSessionManager = getSystemService(MEDIA_SESSION_SERVICE) as MediaSessionManager
         val component = ComponentName(this, NotificationListener::class.java)
         
-        val handlers = mediaSessionManager.getActiveSessions(component)
-        activeControllers.clear()
-        activeControllers.addAll(handlers)
-        
-        handlers.forEach { controller ->
-            controller.registerCallback(object : MediaController.Callback() {
-                override fun onMetadataChanged(metadata: MediaMetadata?) {
-                    super.onMetadataChanged(metadata)
-                    sendMetadataToFlutter(controller, metadata)
-                }
-                override fun onPlaybackStateChanged(s: PlaybackState?) {
-                    super.onPlaybackStateChanged(s)
+        try {
+            val handlers = mediaSessionManager.getActiveSessions(component)
+            activeControllers.clear()
+            activeControllers.addAll(handlers)
+            
+            handlers.forEach { controller ->
+                controller.registerCallback(object : MediaController.Callback() {
+                    override fun onMetadataChanged(metadata: MediaMetadata?) {
+                        super.onMetadataChanged(metadata)
+                        sendMetadataToFlutter(controller, metadata)
+                    }
+                    override fun onPlaybackStateChanged(s: PlaybackState?) {
+                        super.onPlaybackStateChanged(s)
+                        sendMetadataToFlutter(controller, controller.metadata)
+                    }
+                })
+                
+                if (controller.metadata != null) {
                     sendMetadataToFlutter(controller, controller.metadata)
                 }
-            })
-            
-            // Send initial state
-            if (controller.metadata != null) {
-                sendMetadataToFlutter(controller, controller.metadata)
             }
+        } catch (e: SecurityException) {
+            Log.e("Sollu", "SecurityException: Need notification access permission.", e)
         }
     }
 
@@ -47,22 +55,32 @@ class NotificationListener : NotificationListenerService() {
         
         val title = metadata.getString(MediaMetadata.METADATA_KEY_TITLE) ?: return
         val artist = metadata.getString(MediaMetadata.METADATA_KEY_ARTIST) ?: "Unknown"
-        val duration = metadata.getLong(MediaMetadata.METADATA_KEY_DURATION).toInt()
-        val position = controller.playbackState?.position?.toInt() ?: 0
+        val duration = if (metadata.containsKey(MediaMetadata.METADATA_KEY_DURATION)) {
+            metadata.getLong(MediaMetadata.METADATA_KEY_DURATION).toInt()
+        } else { 
+            0 
+        }
         
-        val songData = mapOf(
-            "title" to title,
-            "artist" to artist,
-            "duration" to duration,
-            "position" to position
-        )
-        
-        // Send to Flutter via EventChannel stream handler
-        MainActivity.eventSink?.success(songData)
+        // Only stream the updates if this specific controller is actively playing
+        if (controller.playbackState?.state == PlaybackState.STATE_PLAYING) {
+            activeController = controller // Save the active controller globally
+            
+            val position = controller.playbackState?.position?.toInt() ?: 0
+            
+            val songData = mapOf(
+                "title" to title,
+                "artist" to artist,
+                "duration" to duration,
+                "position" to position
+            )
+            
+            MainActivity.eventSink?.success(songData)
+        }
     }
 
     override fun onListenerDisconnected() {
         super.onListenerDisconnected()
-        Log.d("FastLyrics", "Notification Listener Disconnected")
+        activeController = null // Clear reference on disconnect to prevent memory leaks
+        Log.d("Sollu", "Notification Listener Disconnected")
     }
 }

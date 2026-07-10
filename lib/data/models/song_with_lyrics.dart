@@ -9,6 +9,7 @@ class SongWithLyrics {
   final SyncedLyrics? syncedLyrics;
   final LyricsType lyricsType;
   final DateTime fetchedAt;
+  final String? source; // Add this
 
   SongWithLyrics({
     required this.id,
@@ -18,6 +19,7 @@ class SongWithLyrics {
     this.syncedLyrics,
     required this.lyricsType,
     required this.fetchedAt,
+    this.source, // Add this
   });
 
   factory SongWithLyrics.fromJson(Map<String, dynamic> json) {
@@ -31,6 +33,7 @@ class SongWithLyrics {
           : null,
       lyricsType: LyricsType.fromString(json['lyricsType'] as String?),
       fetchedAt: DateTime.parse(json['fetchedAt'] as String),
+      source: json['source'] as String?, // Add this
     );
   }
 
@@ -42,5 +45,6 @@ class SongWithLyrics {
     'syncedLyrics': syncedLyrics?.toJson(),
     'lyricsType': lyricsType.name,
     'fetchedAt': fetchedAt.toIso8601String(),
+    'source': source, // Add this
   };
 }

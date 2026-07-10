@@ -23,9 +23,7 @@ class MediaSessionService {
         _songController.add(_currentSong);
         _startPositionTimer();
       }
-    }, onError: (e) {
-      // Handle error
-    });
+    }, onError: (e) { /* Handle error */ });
   }
   
   static MediaSessionService get instance {
@@ -33,10 +31,23 @@ class MediaSessionService {
     return _instance!;
   }
   
-  // Add this method to satisfy main.dart and initialization_service.dart
-  Future<void> initialize() async {
-    // Initialization is handled in the constructor, but we provide this
-    // for an explicit initialization point if needed later.
+  Future<void> initialize() async { }
+  
+  // Add this to ask Android for current song explicitly
+  Future<void> getCurrentMedia() async {
+    try {
+      final data = await _methodChannel.invokeMethod('getCurrentMedia');
+      if (data != null) {
+        _currentSong = SongMeta(
+          title: data['title'] as String? ?? 'Unknown',
+          artist: data['artist'] as String? ?? 'Unknown',
+          duration: data['duration'] as int? ?? 0,
+          position: data['position'] as int? ?? 0,
+        );
+        _songController.add(_currentSong);
+        _startPositionTimer();
+      }
+    } catch (e) { /* Ignore */ }
   }
   
   Stream<SongMeta?> get currentSongStream => _songController.stream;
@@ -60,17 +71,12 @@ class MediaSessionService {
   Future<bool> checkPermission() async {
     try {
       return await _methodChannel.invokeMethod('checkPermission');
-    } catch (e) {
-      return false;
-    }
+    } catch (e) { return false; }
   }
   
   Future<void> requestPermission() async {
-    try {
-      await _methodChannel.invokeMethod('requestPermission');
-    } catch (e) {
-      // Handle error
-    }
+    try { await _methodChannel.invokeMethod('requestPermission'); } 
+    catch (e) { /* Handle error */ }
   }
   
   void dispose() {
