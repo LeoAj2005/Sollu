@@ -1,4 +1,3 @@
-import 'synced_lyrics.dart';
 import 'lyrics_type.dart';
 
 class SongWithLyrics {
@@ -6,10 +5,10 @@ class SongWithLyrics {
   final String title;
   final String artist;
   final String? lyrics;
-  final SyncedLyrics? syncedLyrics;
+  final String? syncedLyrics; // Changed to String? to hold the raw LRC data
   final LyricsType lyricsType;
   final DateTime fetchedAt;
-  final String? source; // Add this
+  final String? source;
 
   SongWithLyrics({
     required this.id,
@@ -19,7 +18,7 @@ class SongWithLyrics {
     this.syncedLyrics,
     required this.lyricsType,
     required this.fetchedAt,
-    this.source, // Add this
+    this.source,
   });
 
   factory SongWithLyrics.fromJson(Map<String, dynamic> json) {
@@ -28,12 +27,10 @@ class SongWithLyrics {
       title: json['title'] as String,
       artist: json['artist'] as String,
       lyrics: json['lyrics'] as String?,
-      syncedLyrics: json['syncedLyrics'] != null
-          ? SyncedLyrics.fromJson(json['syncedLyrics'] as Map<String, dynamic>)
-          : null,
+      syncedLyrics: json['syncedLyrics'] as String?, // Directly parsed as a String?
       lyricsType: LyricsType.fromString(json['lyricsType'] as String?),
       fetchedAt: DateTime.parse(json['fetchedAt'] as String),
-      source: json['source'] as String?, // Add this
+      source: json['source'] as String?,
     );
   }
 
@@ -42,9 +39,9 @@ class SongWithLyrics {
     'title': title,
     'artist': artist,
     'lyrics': lyrics,
-    'syncedLyrics': syncedLyrics?.toJson(),
+    'syncedLyrics': syncedLyrics, // Safely serialized directly as a String?
     'lyricsType': lyricsType.name,
     'fetchedAt': fetchedAt.toIso8601String(),
-    'source': source, // Add this
+    'source': source,
   };
 }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:sollu/data/models/lyrics_type.dart';
 import 'package:sollu/presentation/providers/providers.dart';
+import 'package:sollu/utils/utils.dart';
 
 class FloatingLyricsBubble extends ConsumerStatefulWidget {
   const FloatingLyricsBubble({super.key});
@@ -25,17 +26,20 @@ class _FloatingLyricsBubbleState extends ConsumerState<FloatingLyricsBubble> {
     String currentLine = "No lyrics playing...";
 
     lyricsAsync.whenData((lyrics) {
-      if (lyrics != null && lyrics.lyricsType == LyricsType.synced && liveSong != null) {
-        final lines = lyrics.syncedLyrics!.lines;
-        int idx = 0;
-        for (int i = 0; i < lines.length; i++) {
-          if (lines[i].timestamp <= liveSong.position) {
-            idx = i;
-          } else {
-            break;
+      if (lyrics != null && lyrics.lyricsType == LyricsType.synced && lyrics.syncedLyrics != null && liveSong != null) {
+        final parsed = Utils.parseLrc(lyrics.syncedLyrics!);
+        if (parsed != null) {
+          final lines = parsed.lines;
+          int idx = 0;
+          for (int i = 0; i < lines.length; i++) {
+            if (lines[i].timestamp <= liveSong.position) {
+              idx = i;
+            } else {
+              break;
+            }
           }
+          currentLine = lines[idx].text;
         }
-        currentLine = lines[idx].text;
       } else if (lyrics != null && lyrics.lyrics != null) {
         currentLine = lyrics.lyrics!.split('\n').first;
       } else if (lyrics == null) {

@@ -6,6 +6,7 @@ import '../../services/overlay_service.dart';
 import '../../data/models/song_meta.dart';
 import '../../data/models/song_with_lyrics.dart';
 import '../../data/models/lyrics_type.dart';
+import '../../utils/utils.dart'; // Added utility package import
 
 final apiServiceProvider = Provider<ApiService>((ref) => ApiService());
 final storageServiceProvider = Provider<StorageService>((ref) => StorageService());
@@ -37,6 +38,7 @@ final enrichedSongProvider = FutureProvider<SongMeta?>((ref) async {
 });
 
 final lyricsRefreshTriggerProvider = StateProvider<int>((ref) => 0);
+final forceSourceProvider = StateProvider<String?>((ref) => null);
 
 // Sources state provider
 final enabledSourcesProvider = StateNotifierProvider<EnabledSourcesNotifier, Map<String, bool>>((ref) {
@@ -59,19 +61,22 @@ class EnabledSourcesNotifier extends StateNotifier<Map<String, bool>> {
 final lyricsProvider = FutureProvider<SongWithLyrics?>((ref) async {
   final trigger = ref.watch(lyricsRefreshTriggerProvider);
   final enabledSources = ref.watch(enabledSourcesProvider);
+  final forceSource = ref.watch(forceSourceProvider);
   
-  final song = ref.watch(enrichedSongProvider).value;
+  // Watch songMetadataProvider directly instead of enrichedSongProvider
+  // This ensures lyrics load instantly without waiting for artwork
+  final song = ref.watch(songMetadataProvider).value;
   if (song == null || song.title == 'Unknown') return null;
 
   final api = ref.watch(apiServiceProvider);
   final storage = ref.watch(storageServiceProvider);
   
-  if (trigger == 0) {
+  if (forceSource == null && trigger == 0) {
     final stored = await storage.getLyrics('${song.title}_${song.artist}');
     if (stored != null) return stored;
   }
   
-  final lyrics = await api.fetchLyrics(song, enabledSources);
+  final lyrics = await api.fetchLyrics(song, enabledSources, forceSource: forceSource);
   if (lyrics != null) {
     await storage.insertLyrics(lyrics);
   }
@@ -117,11 +122,14 @@ final overlayLyricsPusherProvider = Provider((ref) {
   ref.listen<AsyncValue<SongWithLyrics?>>(lyricsProvider, (_, asyncLyrics) {
     final lyrics = asyncLyrics.value;
     if (ref.read(bubbleToggleProvider)) {
-      final song = ref.read(enrichedSongProvider).value;
+      final song = ref.read(songMetadataProvider).value;
       if (lyrics != null && song != null) {
         String line = "No synced lyrics";
-        if (lyrics.lyricsType == LyricsType.synced) {
-          line = lyrics.syncedLyrics!.lines.first.text;
+        if (lyrics.lyricsType == LyricsType.synced && lyrics.syncedLyrics != null) {
+          final parsed = Utils.parseLrc(lyrics.syncedLyrics!);
+          if (parsed != null && parsed.lines.isNotEmpty) {
+            line = parsed.lines.first.text;
+          }
         } else if (lyrics.lyrics != null) {
           line = lyrics.lyrics!.split('\n').first;
         }
@@ -134,17 +142,20 @@ final overlayLyricsPusherProvider = Provider((ref) {
     final song = asyncSong.value;
     if (ref.read(bubbleToggleProvider) && song != null) {
       final lyrics = ref.read(lyricsProvider).value;
-      if (lyrics != null && lyrics.lyricsType == LyricsType.synced) {
-        final lines = lyrics.syncedLyrics!.lines;
-        int idx = 0;
-        for (int i = 0; i < lines.length; i++) {
-          if (lines[i].timestamp <= song.position) {
-            idx = i;
-          } else {
-            break;
+      if (lyrics != null && lyrics.lyricsType == LyricsType.synced && lyrics.syncedLyrics != null) {
+        final parsed = Utils.parseLrc(lyrics.syncedLyrics!);
+        if (parsed != null) {
+          final lines = parsed.lines;
+          int idx = 0;
+          for (int i = 0; i < lines.length; i++) {
+            if (lines[i].timestamp <= song.position) {
+              idx = i;
+            } else {
+              break;
+            }
           }
+          OverlayService.sendLyricsToOverlay(song.title, lines[idx].text);
         }
-        OverlayService.sendLyricsToOverlay(song.title, lines[idx].text);
       }
     }
   });

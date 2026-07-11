@@ -45,8 +45,63 @@ class _LyricsViewScreenState extends ConsumerState<LyricsViewScreen> with Widget
   }
 
   void _refreshLyrics() {
-    // Forces the lyricsProvider to bypass cache and fetch again
+    // Reset to auto-source and refresh
+    ref.read(forceSourceProvider.notifier).state = null;
     ref.read(lyricsRefreshTriggerProvider.notifier).state++;
+  }
+
+  void _showSourceDialog() {
+    final enabledSources = ref.read(enabledSourcesProvider);
+    final currentSource = ref.read(forceSourceProvider) ?? "Auto";
+
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return SimpleDialog(
+          title: const Text('Select Lyrics Source'),
+          backgroundColor: Theme.of(context).colorScheme.surface,
+          children: <Widget>[
+            _buildDialogOption(context, "Auto (Recommended)", currentSource == "Auto", () {
+              ref.read(forceSourceProvider.notifier).state = null;
+              ref.read(lyricsRefreshTriggerProvider.notifier).state++;
+              Navigator.pop(context);
+            }),
+            if (enabledSources['LRCLIB'] ?? false)
+              _buildDialogOption(context, "LRCLIB (Synced/Plain)", currentSource == "LRCLIB", () {
+                ref.read(forceSourceProvider.notifier).state = "LRCLIB";
+                ref.read(lyricsRefreshTriggerProvider.notifier).state++;
+                Navigator.pop(context);
+              }),
+            if (enabledSources['Deezer'] ?? false)
+              _buildDialogOption(context, "Deezer (Synced)", currentSource == "Deezer", () {
+                ref.read(forceSourceProvider.notifier).state = "Deezer";
+                ref.read(lyricsRefreshTriggerProvider.notifier).state++;
+                Navigator.pop(context);
+              }),
+            if (enabledSources['Netease'] ?? false)
+              _buildDialogOption(context, "Netease (Synced)", currentSource == "Netease", () {
+                ref.read(forceSourceProvider.notifier).state = "Netease";
+                ref.read(lyricsRefreshTriggerProvider.notifier).state++;
+                Navigator.pop(context);
+              }),
+            if (enabledSources['Lyrics.ovh'] ?? false)
+              _buildDialogOption(context, "Lyrics.ovh (Plain)", currentSource == "Lyrics.ovh", () {
+                ref.read(forceSourceProvider.notifier).state = "Lyrics.ovh";
+                ref.read(lyricsRefreshTriggerProvider.notifier).state++;
+                Navigator.pop(context);
+              }),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildDialogOption(BuildContext context, String title, bool isSelected, VoidCallback onTap) {
+    return ListTile(
+      title: Text(title, style: TextStyle(color: isSelected ? Theme.of(context).colorScheme.primary : null)),
+      trailing: isSelected ? Icon(Icons.check, color: Theme.of(context).colorScheme.primary) : null,
+      onTap: onTap,
+    );
   }
 
   @override
@@ -67,9 +122,7 @@ class _LyricsViewScreenState extends ConsumerState<LyricsViewScreen> with Widget
               isBubbleActive ? Icons.bubble_chart : Icons.bubble_chart_outlined,
               color: Colors.white,
             ),
-            onPressed: () {
-              ref.read(bubbleToggleProvider.notifier).state = !isBubbleActive;
-            },
+            onPressed: () => ref.read(bubbleToggleProvider.notifier).state = !isBubbleActive,
             tooltip: 'Toggle Floating Bubble',
           ),
         ],
@@ -112,7 +165,7 @@ class _LyricsViewScreenState extends ConsumerState<LyricsViewScreen> with Widget
                                 child: Padding(
                                   padding: const EdgeInsets.all(32.0),
                                   child: Text(
-                                    'No Lyrics Available.\nTry switching sources in Settings.',
+                                    'No Lyrics Available.\nTry switching sources below.',
                                     textAlign: TextAlign.center,
                                     style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 16),
                                   ),
@@ -126,8 +179,8 @@ class _LyricsViewScreenState extends ConsumerState<LyricsViewScreen> with Widget
                     ],
                   ),
                 ),
-              ],
-            ),
+            ],
+          ),
     );
   }
 
@@ -141,6 +194,8 @@ class _LyricsViewScreenState extends ConsumerState<LyricsViewScreen> with Widget
         ),
       );
     }
+
+    String activeSource = ref.watch(forceSourceProvider) ?? "Auto";
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
@@ -167,50 +222,31 @@ class _LyricsViewScreenState extends ConsumerState<LyricsViewScreen> with Widget
                 Text(song.artist, maxLines: 1, overflow: TextOverflow.ellipsis,
                   style: const TextStyle(color: Colors.white70, fontSize: 14)),
                 const SizedBox(height: 4),
-                _buildSourceStatus(lyrics),
+                Row(
+                  children: [
+                    Icon(Icons.source, size: 12, color: Colors.white.withValues(alpha: 0.5)),
+                    const SizedBox(width: 4),
+                    Text(
+                      'Source: ${lyrics?.source ?? activeSource}', 
+                      style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 12)
+                    ),
+                  ],
+                ),
               ],
             ),
           ),
+          // Switch Source Dialog Button
+          IconButton(
+            icon: const Icon(Icons.swap_horiz, color: Colors.white),
+            onPressed: _showSourceDialog,
+            tooltip: 'Select Source',
+          ),
+          // Refresh Button
           IconButton(
             icon: const Icon(Icons.refresh, color: Colors.white),
             onPressed: _refreshLyrics,
             tooltip: 'Refresh Lyrics',
           ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSourceStatus(SongWithLyrics? lyrics) {
-    bool lrclibFound = lyrics?.source == "LRCLIB";
-    bool ovhFound = lyrics?.source == "Lyrics.ovh";
-    bool noneFound = lyrics == null;
-
-    return Wrap(
-      spacing: 8.0,
-      children: [
-        _sourceChip("LRCLIB", lrclibFound, noneFound),
-        _sourceChip("Lyrics.ovh", ovhFound, noneFound && !lrclibFound),
-      ],
-    );
-  }
-
-  Widget _sourceChip(String name, bool found, bool failed) {
-    Color color = found ? Colors.green : (failed ? Colors.red : Colors.grey);
-    IconData icon = found ? Icons.check_circle : (failed ? Icons.cancel : Icons.help_outline);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.2),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withValues(alpha: 0.5)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 12, color: color),
-          const SizedBox(width: 4),
-          Text(name, style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.bold)),
         ],
       ),
     );
