@@ -90,7 +90,7 @@ class ApiService {
                   title: song.title,
                   artist: song.artist,
                   lyrics: data['plainLyrics'] as String?,
-                  syncedLyrics: syncedLyricsStr, // Store raw string
+                  syncedLyrics: syncedLyricsStr,
                   lyricsType: syncedLyricsStr != null ? LyricsType.synced : (data['plainLyrics'] != null ? LyricsType.plain : LyricsType.none),
                   fetchedAt: DateTime.now(),
                   source: "LRCLIB",
@@ -116,7 +116,7 @@ class ApiService {
               title: song.title,
               artist: song.artist,
               lyrics: data['plainLyrics'] as String?,
-              syncedLyrics: syncedLyricsStr, // Store raw string
+              syncedLyrics: syncedLyricsStr,
               lyricsType: syncedLyricsStr != null ? LyricsType.synced : (data['plainLyrics'] != null ? LyricsType.plain : LyricsType.none),
               fetchedAt: DateTime.now(),
               source: "LRCLIB",
@@ -240,18 +240,16 @@ class ApiService {
           final edges = data['data']?['search']?['results']?['tracks']?['edges'] as List?;
           
           if (edges != null && edges.isNotEmpty) {
-            Map<String, dynamic>? bestTrack; // Changed type from var
+            Map<String, dynamic>? bestTrack;
             for (var edge in edges) {
-              final node = edge['node'] as Map<String, dynamic>?;
-              if (node == null) continue;
-              
+              final node = edge['node'];
               final contributorEdges = node['contributors']?['edges'] as List?;
               if (contributorEdges != null) {
                 for (var cEdge in contributorEdges) {
                   final name = cEdge['node']?['name'] as String? ?? "";
                   final role = cEdge['node']?['role'] as String? ?? "";
                   if (role.toLowerCase() == 'main' && name.toLowerCase() == song.artist.toLowerCase()) {
-                    bestTrack = node;
+                    bestTrack = node as Map<String, dynamic>?;
                     break;
                   }
                 }
@@ -260,45 +258,47 @@ class ApiService {
             }
             bestTrack ??= edges.first['node'] as Map<String, dynamic>?;
 
-            if (bestTrack != null) {
-              final syncedLines = bestTrack['lyrics']?['synchronizedLines'] as List?;
-              final plainText = bestTrack['lyrics']?['text'] as String?;
+            final syncedLines = bestTrack?['lyrics']?['synchronizedLines'] as List?;
+            final plainText = bestTrack?['lyrics']?['text'] as String?;
 
-              if (syncedLines != null && syncedLines.isNotEmpty) {
-                final lrcBuffer = StringBuffer();
-                for (var line in syncedLines) {
-                  final timestamp = line['lrcTimestamp'] as String? ?? "";
-                  final text = line['line'] as String? ?? "";
-                  lrcBuffer.writeln('$timestamp$text');
-                }
-                
-                final lrcStr = lrcBuffer.toString();
-                if (syncOnly && lrcStr.isEmpty) return null;
-                
-                return SongWithLyrics(
-                  id: '${song.title}_${song.artist}',
-                  title: song.title,
-                  artist: song.artist,
-                  lyrics: plainText,
-                  syncedLyrics: lrcStr, // Store raw string
-                  lyricsType: LyricsType.synced,
-                  fetchedAt: DateTime.now(),
-                  source: "Deezer",
-                );
-              } else if (plainText != null && plainText.isNotEmpty) {
-                 return SongWithLyrics(
-                  id: '${song.title}_${song.artist}',
-                  title: song.title,
-                  artist: song.artist,
-                  lyrics: plainText,
-                  syncedLyrics: null,
-                  lyricsType: LyricsType.plain,
-                  fetchedAt: DateTime.now(),
-                  source: "Deezer",
-                );
+            if (syncedLines != null && syncedLines.isNotEmpty) {
+              final lrcBuffer = StringBuffer();
+              for (var line in syncedLines) {
+                final timestamp = line['lrcTimestamp'] as String? ?? "";
+                final text = line['line'] as String? ?? "";
+                lrcBuffer.writeln('$timestamp$text');
               }
+              
+              final lrcStr = lrcBuffer.toString();
+              if (syncOnly && lrcStr.isEmpty) return null;
+              
+              return SongWithLyrics(
+                id: '${song.title}_${song.artist}',
+                title: song.title,
+                artist: song.artist,
+                lyrics: plainText,
+                syncedLyrics: lrcStr,
+                lyricsType: LyricsType.synced,
+                fetchedAt: DateTime.now(),
+                source: "Deezer",
+              );
+            } else if (plainText != null && plainText.isNotEmpty) {
+               return SongWithLyrics(
+                id: '${song.title}_${song.artist}',
+                title: song.title,
+                artist: song.artist,
+                lyrics: plainText,
+                syncedLyrics: null,
+                lyricsType: LyricsType.plain,
+                fetchedAt: DateTime.now(),
+                source: "Deezer",
+              );
             }
+          } else {
+            debugPrint("Deezer: Search returned 0 tracks.");
           }
+        } else {
+          debugPrint("Deezer: GraphQL failed. Body: ${res.body}");
         }
         return null;
       });
@@ -310,8 +310,12 @@ class ApiService {
     try {
       return await _retry(() async {
         final stopwatch = Stopwatch()..start();
+        
+        // FIX: Route through Cloudflare Worker to bypass geographic blocks and timeouts
+        const baseUrl = 'https://gentle-morning-7966.nullbyteai01.workers.dev';
+        
         final searchUrl = Uri.parse(
-          'https://music.163.com/api/search/get?s=${Uri.encodeQueryComponent('${song.title} ${song.artist}')}&type=1&offset=0&limit=10'
+          '$baseUrl/api/search/get?s=${Uri.encodeQueryComponent('${song.title} ${song.artist}')}&type=1&offset=0&limit=10'
         );
         final searchRes = await http.get(
           searchUrl,
@@ -322,13 +326,13 @@ class ApiService {
         ).timeout(const Duration(seconds: 15));
         stopwatch.stop();
         
-        debugPrint("Netease Search: Status ${searchRes.statusCode}, Time: ${stopwatch.elapsedMilliseconds}ms");
+        debugPrint("Netease Search (via Worker): Status ${searchRes.statusCode}, Time: ${stopwatch.elapsedMilliseconds}ms");
 
         if (searchRes.statusCode == 200) {
           final searchData = json.decode(searchRes.body);
           if (searchData['code'] == 200 && searchData['result']['songCount'] > 0) {
             final songs = searchData['result']['songs'] as List;
-            Map<String, dynamic>? matchedSong; // Changed type from var
+            Map<String, dynamic>? matchedSong;
             
             for (var s in songs) {
               final artists = (s['artists'] as List?)?.map((a) => a['name'] as String? ?? '').toList() ?? [];
@@ -339,36 +343,34 @@ class ApiService {
             }
             matchedSong ??= songs.first as Map<String, dynamic>?;
             
-            if (matchedSong != null) {
-              final songId = matchedSong['id'];
+            final songId = matchedSong?['id'];
+            
+            final lyricsUrl = Uri.parse('$baseUrl/api/song/lyric?id=$songId&lv=1&kv=1&tv=-1');
+            final lyricsRes = await http.get(
+              lyricsUrl,
+              headers: {
+                'Referer': 'https://music.163.com',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+              },
+            ).timeout(const Duration(seconds: 15));
+            
+            if (lyricsRes.statusCode == 200) {
+              final lyricsData = json.decode(lyricsRes.body);
+              final lrcStr = lyricsData['lrc']?['lyric'] as String?;
               
-              final lyricsUrl = Uri.parse('https://music.163.com/api/song/lyric?id=$songId&lv=1&kv=1&tv=-1');
-              final lyricsRes = await http.get(
-                lyricsUrl,
-                headers: {
-                  'Referer': 'https://music.163.com',
-                  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-                },
-              ).timeout(const Duration(seconds: 15));
-              
-              if (lyricsRes.statusCode == 200) {
-                final lyricsData = json.decode(lyricsRes.body);
-                final lrcStr = lyricsData['lrc']?['lyric'] as String?;
+              if (lrcStr != null && lrcStr.isNotEmpty) {
+                if (syncOnly && lrcStr.isEmpty) return null;
                 
-                if (lrcStr != null && lrcStr.isNotEmpty) {
-                  if (syncOnly && lrcStr.isEmpty) return null;
-                  
-                  return SongWithLyrics(
-                    id: '${song.title}_${song.artist}',
-                    title: song.title,
-                    artist: song.artist,
-                    lyrics: null,
-                    syncedLyrics: lrcStr, // Store raw string
-                    lyricsType: LyricsType.synced,
-                    fetchedAt: DateTime.now(),
-                    source: "Netease",
-                  );
-                }
+                return SongWithLyrics(
+                  id: '${song.title}_${song.artist}',
+                  title: song.title,
+                  artist: song.artist,
+                  lyrics: null,
+                  syncedLyrics: lrcStr,
+                  lyricsType: LyricsType.synced,
+                  fetchedAt: DateTime.now(),
+                  source: "Netease",
+                );
               }
             }
           }
