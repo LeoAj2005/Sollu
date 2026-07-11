@@ -1,5 +1,4 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-//import 'package:shared_preferences/shared_preferences.dart'; Not used after "Add foreground service permissions, enhance media handling, and improve lyrics fetching logic" Commit
 import '../../data/api/api_service.dart';
 import '../../services/storage/storage_service.dart';
 import '../../services/media_session/media_session_service.dart';
@@ -47,13 +46,9 @@ final enabledSourcesProvider = StateNotifierProvider<EnabledSourcesNotifier, Map
 class EnabledSourcesNotifier extends StateNotifier<Map<String, bool>> {
   EnabledSourcesNotifier() : super({
     'LRCLIB': true,
+    'Deezer': true,
+    'Netease': true,
     'Lyrics.ovh': true,
-    'lyricstranslate.com': true,
-    'genius.com': true,
-    'azlyrics.com': true,
-    'lyricsify.com': true,
-    'findmusicbylyrics.com': true,
-    'lyrics.com': true,
   });
 
   void toggleSource(String source) {
