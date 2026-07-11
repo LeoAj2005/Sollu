@@ -16,21 +16,39 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
   final _controller = TextEditingController();
   List<SongMeta> _results = [];
   bool _isLoading = false;
+  String? _errorMessage;
 
   Future<void> _search() async {
-    if (_controller.text.isEmpty) return;
-    setState(() => _isLoading = true);
+    final query = _controller.text;
+    if (query.isEmpty) return;
     
-    final api = ref.read(apiServiceProvider);
-    _results = await api.searchSongs(_controller.text);
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
     
-    setState(() => _isLoading = false);
+    try {
+      final api = ref.read(apiServiceProvider);
+      final results = await api.searchSongs(query);
+      setState(() {
+        _results = results;
+        if (results.isEmpty) {
+          _errorMessage = "No songs found. Try another keyword.";
+        }
+      });
+    } catch (e) {
+      setState(() {
+        _errorMessage = "Error searching: $e";
+      });
+    } finally {
+      setState(() => _isLoading = false);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Search')),
+      appBar: AppBar(title: const Text('Search Lyrics')),
       body: Column(
         children: [
           Padding(
@@ -38,7 +56,8 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
             child: TextField(
               controller: _controller,
               decoration: InputDecoration(
-                labelText: 'Search songs',
+                labelText: 'Song title or artist',
+                border: const OutlineInputBorder(),
                 suffixIcon: IconButton(
                   icon: const Icon(Icons.search),
                   onPressed: _search,
@@ -48,6 +67,11 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
             ),
           ),
           if (_isLoading) const LinearProgressIndicator(),
+          if (_errorMessage != null)
+            Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Text(_errorMessage!, style: const TextStyle(color: Colors.grey)),
+            ),
           Expanded(
             child: ListView.builder(
               itemCount: _results.length,
@@ -56,6 +80,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                 return ListTile(
                   title: Text(song.title),
                   subtitle: Text(song.artist),
+                  leading: const Icon(Icons.music_note),
                   onTap: () {
                     Navigator.push(
                       context,
@@ -92,7 +117,7 @@ class SearchedLyricsScreen extends ConsumerWidget {
               loading: () => const Center(child: CircularProgressIndicator()),
               error: (e, _) => Center(child: Text('Error: $e')),
               data: (lyrics) => lyrics == null 
-                  ? const Center(child: Text('No lyrics found'))
+                  ? const Center(child: Text('No lyrics found for this song'))
                   : LyricsWidget(lyrics: lyrics, currentSong: song),
             ),
           ),

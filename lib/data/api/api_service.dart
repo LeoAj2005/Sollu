@@ -6,24 +6,61 @@ import '../../utils/utils.dart';
 import '../models/lyrics_type.dart';
 
 class ApiService {
-  // Add skipSource parameter
-  Future<SongWithLyrics?> fetchLyrics(SongMeta song, {String? skipSource}) async {
-    // 1. Try LRCLIB
-    if (skipSource != "LRCLIB") {
-      var lyrics = await _tryLrclib(song);
+  // Main fetcher that orchestrates the providers
+  Future<SongWithLyrics?> fetchLyrics(SongMeta song, Map<String, bool> enabledSources) async {
+    SongWithLyrics? lyrics;
+
+    // Pass 1: Try to find Synced Lyrics first
+    if (enabledSources['LRCLIB'] ?? false) {
+      lyrics = await _tryLrclib(song, syncOnly: true);
       if (lyrics != null) return lyrics;
     }
 
-    // 2. Fallback to Lyrics.ovh
-    if (skipSource != "Lyrics.ovh") {
-      var lyrics = await _tryLyricsOvh(song);
+    // Pass 2: Fallback to Plain Lyrics
+    if (enabledSources['LRCLIB'] ?? false) {
+      lyrics = await _tryLrclib(song);
       if (lyrics != null) return lyrics;
     }
 
-    return null;
+    if (enabledSources['Lyrics.ovh'] ?? false) {
+      lyrics = await _tryLyricsOvh(song);
+      if (lyrics != null) return lyrics;
+    }
+
+    if (enabledSources['genius.com'] ?? false) {
+      lyrics = await _tryGenius(song);
+      if (lyrics != null) return lyrics;
+    }
+
+    if (enabledSources['azlyrics.com'] ?? false) {
+      lyrics = await _tryAzLyrics(song);
+      if (lyrics != null) return lyrics;
+    }
+
+    if (enabledSources['lyricstranslate.com'] ?? false) {
+      lyrics = await _tryLyricsTranslate(song);
+      if (lyrics != null) return lyrics;
+    }
+
+    if (enabledSources['lyricsify.com'] ?? false) {
+      lyrics = await _tryLyricsify(song);
+      if (lyrics != null) return lyrics;
+    }
+
+    if (enabledSources['findmusicbylyrics.com'] ?? false) {
+      lyrics = await _tryFindMusicByLyrics(song);
+      if (lyrics != null) return lyrics;
+    }
+
+    if (enabledSources['lyrics.com'] ?? false) {
+      lyrics = await _tryLyricsDotCom(song);
+      if (lyrics != null) return lyrics;
+    }
+
+    return null; // No Lyrics Available
   }
 
-  Future<SongWithLyrics?> _tryLrclib(SongMeta song) async {
+  Future<SongWithLyrics?> _tryLrclib(SongMeta song, {bool syncOnly = false}) async {
     try {
       final url = Uri.parse(
         'https://lrclib.net/api/get?artist_name=${Uri.encodeComponent(song.artist)}&track_name=${Uri.encodeComponent(song.title)}&duration=${song.duration}'
@@ -35,6 +72,8 @@ class ApiService {
         if (data != null && data['statusCode'] != 404) {
           final syncedLyrics = Utils.parseLrc(data['syncedLyrics'] as String?);
           
+          if (syncOnly && syncedLyrics == null) return null; // Skip if we only want synced
+
           return SongWithLyrics(
             id: '${song.title}_${song.artist}',
             title: song.title,
@@ -45,7 +84,7 @@ class ApiService {
                 ? LyricsType.synced 
                 : (data['plainLyrics'] != null ? LyricsType.plain : LyricsType.none),
             fetchedAt: DateTime.now(),
-            source: "LRCLIB", // Add source
+            source: "LRCLIB",
           );
         }
       }
@@ -73,11 +112,27 @@ class ApiService {
             syncedLyrics: null,
             lyricsType: LyricsType.plain,
             fetchedAt: DateTime.now(),
-            source: "Lyrics.ovh", // Add source
+            source: "Lyrics.ovh",
           );
         }
       }
     } catch (e) { /* Ignore */ }
+    return null;
+  }
+
+  // Note: The following are structural stubs. Web scraping these sites directly via HTTP 
+  // often results in 403 Forbidden or CAPTCHAs. They are wired up so that if you 
+  // implement proper scraping or API calls later, they will work seamlessly.
+  Future<SongWithLyrics?> _tryGenius(SongMeta song) async => _tryScrape(song, "genius.com");
+  Future<SongWithLyrics?> _tryAzLyrics(SongMeta song) async => _tryScrape(song, "azlyrics.com");
+  Future<SongWithLyrics?> _tryLyricsTranslate(SongMeta song) async => _tryScrape(song, "lyricstranslate.com");
+  Future<SongWithLyrics?> _tryLyricsify(SongMeta song) async => _tryScrape(song, "lyricsify.com");
+  Future<SongWithLyrics?> _tryFindMusicByLyrics(SongMeta song) async => _tryScrape(song, "findmusicbylyrics.com");
+  Future<SongWithLyrics?> _tryLyricsDotCom(SongMeta song) async => _tryScrape(song, "lyrics.com");
+
+  Future<SongWithLyrics?> _tryScrape(SongMeta song, String sourceName) async {
+    // Placeholder for actual scraping logic. 
+    // Example: Fetch HTML, parse with html package, extract text.
     return null;
   }
 

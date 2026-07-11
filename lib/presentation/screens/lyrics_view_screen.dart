@@ -29,7 +29,6 @@ class _LyricsViewScreenState extends ConsumerState<LyricsViewScreen> with Widget
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       _checkPermission();
-      // Ask Android for the current song explicitly when app reopens
       MediaSessionService.instance.getCurrentMedia();
     }
   }
@@ -45,34 +44,41 @@ class _LyricsViewScreenState extends ConsumerState<LyricsViewScreen> with Widget
     super.dispose();
   }
 
-  // Force switch the lyrics source
-  void _switchSource(String? currentSource) {
-    String? nextSource;
-    if (currentSource == "LRCLIB") {
-      nextSource = "Lyrics.ovh";
-    } else if (currentSource == "Lyrics.ovh") {
-      nextSource = "LRCLIB";
-    } else {
-      nextSource = null; // Try all again
-    }
-
-    ref.read(skipSourceProvider.notifier).state = nextSource;
+  void _refreshLyrics() {
+    // Forces the lyricsProvider to bypass cache and fetch again
     ref.read(lyricsRefreshTriggerProvider.notifier).state++;
   }
 
   @override
   Widget build(BuildContext context) {
     final songAsync = ref.watch(enrichedSongProvider);
+    final liveSong = ref.watch(currentSongProvider).value;
     final lyricsAsync = ref.watch(lyricsProvider);
+    final isBubbleActive = ref.watch(bubbleToggleProvider);
 
     return Scaffold(
       extendBodyBehindAppBar: true,
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        actions: [
+          IconButton(
+            icon: Icon(
+              isBubbleActive ? Icons.bubble_chart : Icons.bubble_chart_outlined,
+              color: Colors.white,
+            ),
+            onPressed: () {
+              ref.read(bubbleToggleProvider.notifier).state = !isBubbleActive;
+            },
+            tooltip: 'Toggle Floating Bubble',
+          ),
+        ],
+      ),
       body: !_hasPermission
           ? _buildPermissionRequest()
           : Stack(
               fit: StackFit.expand,
               children: [
-                // Dynamic Blurred Background
                 songAsync.when(
                   loading: () => Container(color: Theme.of(context).colorScheme.surface),
                   error: (_, __) => Container(color: Theme.of(context).colorScheme.surface),
@@ -87,7 +93,6 @@ class _LyricsViewScreenState extends ConsumerState<LyricsViewScreen> with Widget
                       : Container(color: Theme.of(context).colorScheme.surface),
                 ),
                 
-                // Content
                 SafeArea(
                   child: Column(
                     children: [
@@ -107,22 +112,22 @@ class _LyricsViewScreenState extends ConsumerState<LyricsViewScreen> with Widget
                                 child: Padding(
                                   padding: const EdgeInsets.all(32.0),
                                   child: Text(
-                                    'No lyrics found.\nTry switching sources below.',
+                                    'No Lyrics Available.\nTry switching sources in Settings.',
                                     textAlign: TextAlign.center,
                                     style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 16),
                                   ),
                                 ),
                               );
                             }
-                            return LyricsWidget(lyrics: lyrics, currentSong: songAsync.value);
+                            return LyricsWidget(lyrics: lyrics, currentSong: liveSong);
                           },
                         ),
                       ),
                     ],
                   ),
                 ),
-            ],
-          ),
+              ],
+            ),
     );
   }
 
@@ -161,17 +166,51 @@ class _LyricsViewScreenState extends ConsumerState<LyricsViewScreen> with Widget
                   style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18)),
                 Text(song.artist, maxLines: 1, overflow: TextOverflow.ellipsis,
                   style: const TextStyle(color: Colors.white70, fontSize: 14)),
-                if (lyrics?.source != null)
-                  Text('Source: ${lyrics!.source}', style: const TextStyle(color: Colors.white54, fontSize: 12)),
+                const SizedBox(height: 4),
+                _buildSourceStatus(lyrics),
               ],
             ),
           ),
-          // Switch Source Button
           IconButton(
-            icon: const Icon(Icons.swap_horiz, color: Colors.white),
-            onPressed: () => _switchSource(lyrics?.source),
-            tooltip: 'Switch Source',
+            icon: const Icon(Icons.refresh, color: Colors.white),
+            onPressed: _refreshLyrics,
+            tooltip: 'Refresh Lyrics',
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSourceStatus(SongWithLyrics? lyrics) {
+    bool lrclibFound = lyrics?.source == "LRCLIB";
+    bool ovhFound = lyrics?.source == "Lyrics.ovh";
+    bool noneFound = lyrics == null;
+
+    return Wrap(
+      spacing: 8.0,
+      children: [
+        _sourceChip("LRCLIB", lrclibFound, noneFound),
+        _sourceChip("Lyrics.ovh", ovhFound, noneFound && !lrclibFound),
+      ],
+    );
+  }
+
+  Widget _sourceChip(String name, bool found, bool failed) {
+    Color color = found ? Colors.green : (failed ? Colors.red : Colors.grey);
+    IconData icon = found ? Icons.check_circle : (failed ? Icons.cancel : Icons.help_outline);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.2),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withValues(alpha: 0.5)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 12, color: color),
+          const SizedBox(width: 4),
+          Text(name, style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.bold)),
         ],
       ),
     );

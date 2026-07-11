@@ -17,7 +17,7 @@ class StorageService {
     
     _db = await openDatabase(
       path,
-      version: AppConstants.databaseVersion,
+      version: 2, // Bumped version to 2
       onCreate: (Database db, int version) async {
         await db.execute('''
           CREATE TABLE $_table (
@@ -27,9 +27,16 @@ class StorageService {
             lyrics TEXT,
             syncedLyrics TEXT,
             lyricsType TEXT NOT NULL,
-            fetchedAt TEXT NOT NULL
+            fetchedAt TEXT NOT NULL,
+            source TEXT
           )
         ''');
+      },
+      onUpgrade: (Database db, int oldVersion, int newVersion) async {
+        if (oldVersion < 2) {
+          // Safely add the source column if updating from version 1
+          await db.execute('ALTER TABLE $_table ADD COLUMN source TEXT;');
+        }
       },
     );
     _isInitialized = true;
