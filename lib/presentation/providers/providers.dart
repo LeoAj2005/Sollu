@@ -106,6 +106,7 @@ final savedLyricsProvider = FutureProvider<List<SongWithLyrics>>((ref) async {
 final bubbleToggleProvider = StateProvider<bool>((ref) => false);
 
 final overlayLyricsPusherProvider = Provider((ref) {
+  // 1. Listen to overlay display toggles
   ref.listen<bool>(bubbleToggleProvider, (_, isOn) async {
     if (isOn) {
       final hasPerm = await OverlayService.requestPermission();
@@ -119,6 +120,7 @@ final overlayLyricsPusherProvider = Provider((ref) {
     }
   });
 
+  // 2. Listen to fresh lyric fetches or manual changes
   ref.listen<AsyncValue<SongWithLyrics?>>(lyricsProvider, (_, asyncLyrics) {
     final lyrics = asyncLyrics.value;
     if (ref.read(bubbleToggleProvider)) {
@@ -138,6 +140,7 @@ final overlayLyricsPusherProvider = Provider((ref) {
     }
   });
 
+  // 3. Listen to live position stream updates (triggers every second)
   ref.listen<AsyncValue<SongMeta?>>(currentSongProvider, (_, asyncSong) {
     final song = asyncSong.value;
     if (ref.read(bubbleToggleProvider) && song != null) {

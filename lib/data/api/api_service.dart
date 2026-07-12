@@ -1,17 +1,15 @@
 import 'dart:async';
 import 'dart:convert';
-import 'package:flutter/foundation.dart'; // Added for debugPrint
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import '../models/song_meta.dart';
 import '../models/song_with_lyrics.dart';
 import '../models/lyrics_type.dart';
 
 class ApiService {
-  // Deezer JWT Cache
   String? _deezerJwt;
   DateTime? _deezerJwtExpiry;
 
-  // Retry helper
   Future<T> _retry<T>(Future<T> Function() fn, {int retries = 2}) async {
     for (int i = 0; i < retries; i++) {
       try {
@@ -32,6 +30,15 @@ class ApiService {
     bool useDeezer = forceSource == null ? (enabledSources['Deezer'] ?? false) : forceSource == 'Deezer';
     bool useNetease = forceSource == null ? (enabledSources['Netease'] ?? false) : forceSource == 'Netease';
     bool useOvh = forceSource == null ? (enabledSources['Lyrics.ovh'] ?? false) : forceSource == 'Lyrics.ovh';
+
+    // DIAGNOSTIC LOG
+    debugPrint("=========================================");
+    debugPrint("fetchLyrics START");
+    debugPrint("Song: ${song.title} by ${song.artist}");
+    debugPrint("forceSource: $forceSource");
+    debugPrint("enabledSources map: $enabledSources");
+    debugPrint("Will use -> LRCLIB: $useLrclib, Deezer: $useDeezer, Netease: $useNetease, Ovh: $useOvh");
+    debugPrint("=========================================");
 
     // Pass 1: Synced Lyrics
     if (useLrclib) {
@@ -65,6 +72,7 @@ class ApiService {
       if (lyrics != null) return lyrics;
     }
 
+    debugPrint("fetchLyrics END (No lyrics found from any enabled source)");
     return null;
   }
 
@@ -136,7 +144,6 @@ class ApiService {
         final url = Uri.parse('https://api.lyrics.ovh/v1/${Uri.encodeComponent(song.artist)}/${Uri.encodeComponent(song.title)}');
         final response = await http.get(url).timeout(const Duration(seconds: 15));
         stopwatch.stop();
-        
         debugPrint("Lyrics.ovh: Status ${response.statusCode}, Time: ${stopwatch.elapsedMilliseconds}ms");
         
         if (response.statusCode == 200) {
@@ -163,30 +170,53 @@ class ApiService {
 
   Future<String?> _getDeezerJwt() async {
     if (_deezerJwt != null && _deezerJwtExpiry != null && DateTime.now().isBefore(_deezerJwtExpiry!)) {
+      debugPrint("Deezer JWT: Using cached token.");
       return _deezerJwt;
     }
 
     try {
-      final authRes = await http.post(Uri.parse('https://auth.deezer.com/login/anonymous?jo=p')).timeout(const Duration(seconds: 15));
+      debugPrint("Deezer JWT: Fetching new token...");
+      final authRes = await http.get(
+        Uri.parse('https://auth.deezer.com/login/anonymous?jo=p'),
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+          'Accept': 'application/json',
+        },
+      ).timeout(const Duration(seconds: 15));
+      
       if (authRes.statusCode == 200) {
         final authData = json.decode(authRes.body);
         _deezerJwt = authData['jwt'];
         _deezerJwtExpiry = DateTime.now().add(const Duration(minutes: 50));
+        debugPrint("Deezer JWT: Successfully received.");
         return _deezerJwt;
+      } else {
+        debugPrint("Deezer JWT: Failed with status ${authRes.statusCode}");
       }
-    } catch (e) { debugPrint("Deezer Auth Error: $e"); }
+    } catch (e) { 
+      debugPrint("Deezer Auth Error: $e"); 
+    }
     return null;
   }
 
   Future<SongWithLyrics?> _tryDeezer(SongMeta song, {bool syncOnly = false}) async {
+    debugPrint("Deezer: Attempting to fetch for ${song.title} by ${song.artist}");
     try {
       return await _retry(() async {
         final jwt = await _getDeezerJwt();
-        if (jwt == null) return null;
+        if (jwt == null) {
+          debugPrint("Deezer: JWT null");
+          return null;
+        }
+
+        // Clean query: remove parentheses and extra artists
+        final cleanTitle = song.title.replaceAll(RegExp(r'\([^)]*\)'), '').trim();
+        final mainArtist = song.artist.split(',').first.trim();
+        final query = "$mainArtist $cleanTitle";
+        debugPrint("Deezer: Using query: $query");
 
         final stopwatch = Stopwatch()..start();
         final graphqlUrl = Uri.parse('https://pipe.deezer.com/api');
-        
         final graphqlBody = json.encode({
           "operationName": "SearchAndLyrics",
           "query": r"""
@@ -200,10 +230,8 @@ class ApiService {
                         title
                         contributors {
                           edges {
-                            node {
-                              name
-                              role
-                            }
+                            node { name }
+                            roles
                           }
                         }
                         lyrics {
@@ -220,7 +248,7 @@ class ApiService {
               }
             }
           """,
-          "variables": {"query": "${song.artist} ${song.title}"}
+          "variables": {"query": query}
         });
 
         final res = await http.post(
@@ -228,12 +256,13 @@ class ApiService {
           headers: {
             'Authorization': 'Bearer $jwt',
             'Content-Type': 'application/json',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
           },
           body: graphqlBody,
         ).timeout(const Duration(seconds: 15));
         stopwatch.stop();
-        
         debugPrint("Deezer: Status ${res.statusCode}, Time: ${stopwatch.elapsedMilliseconds}ms");
+        debugPrint("Deezer Response Body: ${res.body}"); // Log response
 
         if (res.statusCode == 200) {
           final data = json.decode(res.body);
@@ -241,16 +270,18 @@ class ApiService {
           
           if (edges != null && edges.isNotEmpty) {
             Map<String, dynamic>? bestTrack;
-            for (var edge in edges) {
-              final node = edge['node'];
-              final contributorEdges = node['contributors']?['edges'] as List?;
-              if (contributorEdges != null) {
-                for (var cEdge in contributorEdges) {
-                  final name = cEdge['node']?['name'] as String? ?? "";
-                  final role = cEdge['node']?['role'] as String? ?? "";
-                  if (role.toLowerCase() == 'main' && name.toLowerCase() == song.artist.toLowerCase()) {
-                    bestTrack = node as Map<String, dynamic>?;
-                    break;
+            for (final edge in edges) {
+              final node = edge['node'] as Map<String, dynamic>?;
+              final contribEdges = node?['contributors']?['edges'] as List?;
+              if (contribEdges != null) {
+                for (final ce in contribEdges) {
+                  final roles = ce['roles'] as List?;
+                  if (roles != null && roles.contains('MAIN')) {
+                    final name = ce['node']?['name'] as String?;
+                    if (name != null && name.toLowerCase() == mainArtist.toLowerCase()) {
+                      bestTrack = node;
+                      break;
+                    }
                   }
                 }
               }
@@ -268,10 +299,8 @@ class ApiService {
                 final text = line['line'] as String? ?? "";
                 lrcBuffer.writeln('$timestamp$text');
               }
-              
               final lrcStr = lrcBuffer.toString();
               if (syncOnly && lrcStr.isEmpty) return null;
-              
               return SongWithLyrics(
                 id: '${song.title}_${song.artist}',
                 title: song.title,
@@ -283,7 +312,7 @@ class ApiService {
                 source: "Deezer",
               );
             } else if (plainText != null && plainText.isNotEmpty) {
-               return SongWithLyrics(
+              return SongWithLyrics(
                 id: '${song.title}_${song.artist}',
                 title: song.title,
                 artist: song.artist,
@@ -295,14 +324,79 @@ class ApiService {
               );
             }
           } else {
-            debugPrint("Deezer: Search returned 0 tracks.");
+            debugPrint("Deezer: No edges found in GraphQL response. Trying REST API fallback...");
+            // REST API Fallback
+            final restUrl = Uri.parse('https://api.deezer.com/search?q=${Uri.encodeQueryComponent('artist:"$mainArtist" track:"$cleanTitle"')}&limit=1');
+            final restRes = await http.get(restUrl, headers: {'User-Agent': 'Mozilla/5.0'}).timeout(const Duration(seconds: 10));
+            if (restRes.statusCode == 200) {
+              final restData = json.decode(restRes.body);
+              if (restData['data'] != null && (restData['data'] as List).isNotEmpty) {
+                final trackId = restData['data'][0]['id'];
+                debugPrint("Deezer REST: Found track ID $trackId. Fetching lyrics via GraphQL...");
+                
+                final graphqlLyricsBody = json.encode({
+                  "operationName": "SynchronizedLyrics",
+                  "query": r"query SynchronizedLyrics($track_id: String!) { track(track_id: $track_id) { lyrics { synchronizedLines { lrcTimestamp line } text } } }",
+                  "variables": {"track_id": trackId.toString()}
+                });
+                final lyricsRes = await http.post(
+                  graphqlUrl,
+                  headers: {
+                    'Authorization': 'Bearer $jwt',
+                    'Content-Type': 'application/json',
+                    'User-Agent': 'Mozilla/5.0',
+                  },
+                  body: graphqlLyricsBody,
+                ).timeout(const Duration(seconds: 10));
+
+                if (lyricsRes.statusCode == 200) {
+                  final lyricsData = json.decode(lyricsRes.body);
+                  final syncedLines = lyricsData['data']?['track']?['lyrics']?['synchronizedLines'] as List?;
+                  final plainText = lyricsData['data']?['track']?['lyrics']?['text'] as String?;
+
+                  if (syncedLines != null && syncedLines.isNotEmpty) {
+                    final lrcBuffer = StringBuffer();
+                    for (var line in syncedLines) {
+                      final timestamp = line['lrcTimestamp'] as String? ?? "";
+                      final text = line['line'] as String? ?? "";
+                      lrcBuffer.writeln('$timestamp$text');
+                    }
+                    final lrcStr = lrcBuffer.toString();
+                    if (syncOnly && lrcStr.isEmpty) return null;
+                    return SongWithLyrics(
+                      id: '${song.title}_${song.artist}',
+                      title: song.title,
+                      artist: song.artist,
+                      lyrics: plainText,
+                      syncedLyrics: lrcStr,
+                      lyricsType: LyricsType.synced,
+                      fetchedAt: DateTime.now(),
+                      source: "Deezer",
+                    );
+                  } else if (plainText != null && plainText.isNotEmpty) {
+                    return SongWithLyrics(
+                      id: '${song.title}_${song.artist}',
+                      title: song.title,
+                      artist: song.artist,
+                      lyrics: plainText,
+                      syncedLyrics: null,
+                      lyricsType: LyricsType.plain,
+                      fetchedAt: DateTime.now(),
+                      source: "Deezer",
+                    );
+                  }
+                }
+              }
+            }
           }
         } else {
-          debugPrint("Deezer: GraphQL failed. Body: ${res.body}");
+          debugPrint("Deezer GraphQL failed: ${res.body}");
         }
         return null;
       });
-    } catch (e) { debugPrint("Deezer Error: $e"); }
+    } catch (e) {
+      debugPrint("Deezer Error: $e");
+    }
     return null;
   }
 
@@ -310,8 +404,6 @@ class ApiService {
     try {
       return await _retry(() async {
         final stopwatch = Stopwatch()..start();
-        
-        // FIX: Route through Cloudflare Worker to bypass geographic blocks and timeouts
         const baseUrl = 'https://gentle-morning-7966.nullbyteai01.workers.dev';
         
         final searchUrl = Uri.parse(
@@ -325,7 +417,6 @@ class ApiService {
           },
         ).timeout(const Duration(seconds: 15));
         stopwatch.stop();
-        
         debugPrint("Netease Search (via Worker): Status ${searchRes.statusCode}, Time: ${stopwatch.elapsedMilliseconds}ms");
 
         if (searchRes.statusCode == 200) {
@@ -342,7 +433,6 @@ class ApiService {
               }
             }
             matchedSong ??= songs.first as Map<String, dynamic>?;
-            
             final songId = matchedSong?['id'];
             
             final lyricsUrl = Uri.parse('$baseUrl/api/song/lyric?id=$songId&lv=1&kv=1&tv=-1');
