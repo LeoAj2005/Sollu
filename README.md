@@ -1,30 +1,28 @@
 
 
-# 🎵 Sollu
+# Sollu
 
 Sollu is a Flutter application designed to fetch and download lyrics for the song you are currently listening to. Built with a strong focus on the Indian music ecosystem, it seamlessly supports regional languages alongside English, wrapped in a beautifully customized typographic experience.
 
 ---
 
-## 📱 Screenshots
+## Screenshots
 
 | Home Screen | Lyrics View | Search |
 | :---: | :---: | :---: |
-| ![Home Screen](https://placehold.co/250x500/1DB954/FFFFFF?text=PLace+Holder) | ![Lyrics View](https://placehold.co/250x500/282828/FFFFFF?text=PLace+Holder) | ![Search Screen](https://placehold.co/250x500/121212/FFFFFF?text=PLace+Holder) |
+| ![Lyrics View](https://tikolu.net/i/xxxat) | ![Search](https://tikolu.net/i/fqsqc) | ![Settings Page](https://tikolu.net/i/yecvo) |
 
 ---
 
-## ✨ Key Features
+## Key Features
 
 * **Real-Time Lyrics:** Automatically retrieves lyrics for the song you're currently playing.
-* **Regional Support (IN):** Tailored for the Indian audience, supporting lyrics in Tamil, Hindi, Telugu, Malayalam, and other regional languages with perfect UTF-8 rendering.
-* **Customized Typography:** Beautiful, hand-picked fonts using `google_fonts` to ensure lyrics are displayed elegantly, including native, highly-readable scripts for Indian languages.
 * **Offline Access:** Save your favorite lyrics locally using SQLite for uninterrupted reading without an internet connection.
 * **Seamless Navigation:** Smooth routing and deep-linking powered by `go_router`.
 
 ---
 
-## 🛠️ Tech Stack
+## Tech Stack
 
 This project is built using modern Flutter packages to provide a scalable and maintainable architecture.
 
@@ -38,7 +36,7 @@ This project is built using modern Flutter packages to provide a scalable and ma
 
 ---
 
-## 🚀 Getting Started
+## Getting Started
 
 ### Prerequisites
 
@@ -91,7 +89,7 @@ flutter build ios --release
 
 ---
 
-## 📂 Project Structure
+## Project Structure
 
 ```text
 lib/
@@ -106,7 +104,7 @@ lib/
 
 ---
 
-## 📦 Dependencies
+## Dependencies
 
 Install or update dependencies at any time with:
 
@@ -121,21 +119,21 @@ flutter pub upgrade
 ```
     
 
-## 🤝 Contributing
+## Contributing
 
 Contributions, issues, and feature requests are welcome!
 
 1.  Fork it
     
-2.  Create your feature branch (`git checkout -b feature/AmazingFeature`)
+2.  Create your feature branch (`git checkout -b feature/NewFeature`)
     
-3.  Commit your changes (`git commit -m 'Add some AmazingFeature'`)
+3.  Commit your changes (`git commit -m 'Add some NewFeature'`)
     
-4.  Push to the branch (`git push origin feature/AmazingFeature`)
+4.  Push to the branch (`git push origin feature/NewFeature`)
     
 5.  Open a Pull Request
     
 
-## 📝 License
+## License
 
 Distributed under the MIT License. See `LICENSE` for more information.

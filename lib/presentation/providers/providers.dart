@@ -6,7 +6,7 @@ import '../../services/overlay_service.dart';
 import '../../data/models/song_meta.dart';
 import '../../data/models/song_with_lyrics.dart';
 import '../../data/models/lyrics_type.dart';
-import '../../utils/utils.dart'; // Added utility package import
+import '../../utils/utils.dart';
 
 final apiServiceProvider = Provider<ApiService>((ref) => ApiService());
 final storageServiceProvider = Provider<StorageService>((ref) => StorageService());
@@ -140,11 +140,12 @@ final overlayLyricsPusherProvider = Provider((ref) {
     }
   });
 
-  // 3. Listen to live position stream updates (triggers every second)
+  // 3. FIX: Active structural match targeting the continuous playback position tracking stream
   ref.listen<AsyncValue<SongMeta?>>(currentSongProvider, (_, asyncSong) {
     final song = asyncSong.value;
     if (ref.read(bubbleToggleProvider) && song != null) {
       final lyrics = ref.read(lyricsProvider).value;
+      
       if (lyrics != null && lyrics.lyricsType == LyricsType.synced && lyrics.syncedLyrics != null) {
         final parsed = Utils.parseLrc(lyrics.syncedLyrics!);
         if (parsed != null) {
@@ -157,6 +158,7 @@ final overlayLyricsPusherProvider = Provider((ref) {
               break;
             }
           }
+          // Actively send the current, correct time-matched lyric line every tick
           OverlayService.sendLyricsToOverlay(song.title, lines[idx].text);
         }
       }
