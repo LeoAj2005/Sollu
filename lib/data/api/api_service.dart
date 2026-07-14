@@ -172,10 +172,9 @@ class ApiService {
     try {
       return await _retry(() async {
         final stopwatch = Stopwatch()..start();
-        // Use pathSegments to avoid double-encoding
-        final uri = Uri.https(
-          'api.lyrics.ovh',
-          '/v1/${song.artist}/${song.title}', // Let Uri.https encode each segment
+        // Explicitly encode components to prevent slashes from breaking the path
+        final uri = Uri.parse(
+          'https://api.lyrics.ovh/v1/${Uri.encodeComponent(song.artist)}/${Uri.encodeComponent(song.title)}'
         );
         final response = await _client
             .get(uri, headers: {'User-Agent': _userAgent})

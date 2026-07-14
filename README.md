@@ -8,7 +8,7 @@ Sollu is a Flutter application designed to fetch and download lyrics for the son
 
 ## Screenshots
 
-| Home Screen | Lyrics View | Search |
+| Lyrics View | Search | Settings Page |
 | :---: | :---: | :---: |
 | ![Lyrics View](https://tikolu.net/i/xxxat) | ![Search](https://tikolu.net/i/fqsqc) | ![Settings Page](https://tikolu.net/i/yecvo) |
 
