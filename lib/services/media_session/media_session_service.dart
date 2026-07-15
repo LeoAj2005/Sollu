@@ -19,6 +19,7 @@ class MediaSessionService {
           artist: data['artist'] as String? ?? 'Unknown',
           duration: data['duration'] as int? ?? 0,
           position: data['position'] as int? ?? 0,
+          isPlaying: data['isPlaying'] as bool? ?? false, // New: Parse isPlaying
         );
         _songController.add(_currentSong);
         _startPositionTimer();
@@ -33,7 +34,7 @@ class MediaSessionService {
   
   Future<void> initialize() async { }
   
-  // Add this to ask Android for current song explicitly
+  // Ask Android for current song explicitly
   Future<void> getCurrentMedia() async {
     try {
       final data = await _methodChannel.invokeMethod('getCurrentMedia');
@@ -43,6 +44,7 @@ class MediaSessionService {
           artist: data['artist'] as String? ?? 'Unknown',
           duration: data['duration'] as int? ?? 0,
           position: data['position'] as int? ?? 0,
+          isPlaying: data['isPlaying'] as bool? ?? false, // New: Parse isPlaying
         );
         _songController.add(_currentSong);
         _startPositionTimer();
@@ -56,12 +58,14 @@ class MediaSessionService {
   void _startPositionTimer() {
     _positionTimer?.cancel();
     _positionTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (_currentSong != null && _currentSong!.duration > 0) {
+      // New: Only increment position if the song is actively playing
+      if (_currentSong != null && _currentSong!.isPlaying && _currentSong!.duration > 0) {
         _currentSong = SongMeta(
           title: _currentSong!.title,
           artist: _currentSong!.artist,
           duration: _currentSong!.duration,
           position: _currentSong!.position + 1000,
+          isPlaying: _currentSong!.isPlaying,
         );
         _songController.add(_currentSong);
       }
@@ -75,8 +79,9 @@ class MediaSessionService {
   }
   
   Future<void> requestPermission() async {
-    try { await _methodChannel.invokeMethod('requestPermission'); } 
-    catch (e) { /* Handle error */ }
+    try { 
+      await _methodChannel.invokeMethod('requestPermission'); 
+    } catch (e) { /* Handle error */ }
   }
   
   void dispose() {

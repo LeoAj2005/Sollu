@@ -43,12 +43,17 @@ class MainActivity: FlutterActivity() {
                     val packageName = packageName
                     result.success(enabledListeners?.contains(packageName) == true)
                 }
-                // Merged Fix: Fetch the current song information on app resume/UI refresh
+                // Fetch the current song information on app resume/UI refresh
                 "getCurrentMedia" -> {
                     val controller = NotificationListener.activeController
                     val metadata = controller?.metadata
+                    val playbackState = controller?.playbackState?.state
+                    val isPlaying = playbackState == android.media.session.PlaybackState.STATE_PLAYING
                     
-                    if (controller != null && metadata != null && controller.playbackState?.state == android.media.session.PlaybackState.STATE_PLAYING) {
+                    if (controller != null && metadata != null && 
+                        (playbackState == android.media.session.PlaybackState.STATE_PLAYING || 
+                         playbackState == android.media.session.PlaybackState.STATE_PAUSED)) {
+                        
                         val title = metadata.getString(MediaMetadata.METADATA_KEY_TITLE)
                         val artist = metadata.getString(MediaMetadata.METADATA_KEY_ARTIST) ?: "Unknown"
                         val duration = if (metadata.containsKey(MediaMetadata.METADATA_KEY_DURATION)) {
@@ -62,7 +67,8 @@ class MainActivity: FlutterActivity() {
                             "title" to title,
                             "artist" to artist,
                             "duration" to duration,
-                            "position" to position
+                            "position" to position,
+                            "isPlaying" to isPlaying // NEW
                         )
                         result.success(songData)
                     } else {

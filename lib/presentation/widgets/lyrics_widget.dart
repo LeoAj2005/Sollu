@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 import 'package:sollu/data/models/song_with_lyrics.dart';
 import 'package:sollu/data/models/lyrics_type.dart';
 import 'package:sollu/data/models/song_meta.dart';
@@ -16,8 +17,10 @@ class LyricsWidget extends StatefulWidget {
 }
 
 class _LyricsWidgetState extends State<LyricsWidget> {
-  final ScrollController _scrollController = ScrollController();
-  int _currentLineIndex = -1;
+  final ItemScrollController _itemScrollController = ItemScrollController();
+  final ItemPositionsListener _itemPositionsListener = ItemPositionsListener.create();
+  
+  int _currentLineIndex = 0;
   SyncedLyrics? _parsedLyrics;
 
   @override
@@ -38,14 +41,9 @@ class _LyricsWidgetState extends State<LyricsWidget> {
 
   void _parseLyrics() {
     if (widget.lyrics.lyricsType == LyricsType.synced && widget.lyrics.syncedLyrics != null) {
-      setState(() {
-        _parsedLyrics = Utils.parseLrc(widget.lyrics.syncedLyrics!);
-        _currentLineIndex = -1; // Reset tracking index for new lyrics
-      });
+      _parsedLyrics = Utils.parseLrc(widget.lyrics.syncedLyrics!);
     } else {
-      setState(() {
-        _parsedLyrics = null;
-      });
+      _parsedLyrics = null;
     }
   }
 
@@ -71,23 +69,15 @@ class _LyricsWidgetState extends State<LyricsWidget> {
   }
 
   void _scrollToLine(int index) {
-    if (!_scrollController.hasClients) return;
+    if (!_itemScrollController.isAttached) return;
     
-    // Approximate line offset calculation (accounting for custom padding/height)
-    // For completely pixel-perfect variable text sizes, 'scrollable_positioned_list' dependency is highly recommended
-    final offset = (index * 54.0) - (MediaQuery.of(context).size.height * 0.3);
-    
-    _scrollController.animateTo(
-      offset.clamp(0.0, _scrollController.position.maxScrollExtent),
-      duration: const Duration(milliseconds: 350),
-      curve: Curves.easeInOutCubic,
+    // alignment 0.4 keeps the active lyric line consistently positioned at 40% from the top of the viewport
+    _itemScrollController.scrollTo(
+      index: index,
+      duration: const Duration(milliseconds: 400),
+      curve: Curves.easeOutCubic,
+      alignment: 0.4,
     );
-  }
-
-  @override
-  void dispose() {
-    _scrollController.dispose();
-    super.dispose();
   }
 
   @override
@@ -100,16 +90,17 @@ class _LyricsWidgetState extends State<LyricsWidget> {
           return const LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [Colors.transparent, Colors.black, Colors.black, Colors.transparent],
-            stops: [0.0, 0.15, 0.85, 1.0],
+            colors: [Colors.transparent, Colors.black, Colors.transparent],
+            stops: [0.0, 0.2, 0.8],
           ).createShader(bounds);
         },
         blendMode: BlendMode.dstIn,
-        child: ListView.builder(
-          controller: _scrollController,
+        child: ScrollablePositionedList.builder(
+          itemScrollController: _itemScrollController,
+          itemPositionsListener: _itemPositionsListener,
           padding: EdgeInsets.only(
-            top: MediaQuery.of(context).size.height * 0.35,
-            bottom: MediaQuery.of(context).size.height * 0.45,
+            top: MediaQuery.of(context).size.height * 0.4,
+            bottom: MediaQuery.of(context).size.height * 0.4,
           ),
           itemCount: lines.length,
           itemBuilder: (context, index) {
@@ -118,19 +109,18 @@ class _LyricsWidgetState extends State<LyricsWidget> {
               onTap: () {
                 // Future: implement seek using lines[index].timestamp
               },
-              child: Container(
-                alignment: Alignment.center,
-                padding: const EdgeInsets.symmetric(vertical: 10.0, horizontal: 24.0),
-                child: AnimatedDefaultTextStyle(
-                  duration: const Duration(milliseconds: 300),
-                  curve: Curves.easeInOut,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: isCurrent ? 26 : 20,
-                    height: 1.4,
-                    fontWeight: isCurrent ? FontWeight.bold : FontWeight.w500,
-                    color: isCurrent ? Colors.white : Colors.white.withValues(alpha: 0.4),
-                  ),
+              child: AnimatedDefaultTextStyle(
+                duration: const Duration(milliseconds: 300),
+                curve: Curves.easeOut,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: isCurrent ? 28 : 20,
+                  height: 1.5,
+                  fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
+                  color: isCurrent ? Colors.white : Colors.white.withValues(alpha: 0.4),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 24.0),
                   child: Text(lines[index].text),
                 ),
               ),
@@ -146,8 +136,8 @@ class _LyricsWidgetState extends State<LyricsWidget> {
           textAlign: TextAlign.center,
           style: const TextStyle(
             color: Colors.white, 
-            fontSize: 19, 
-            height: 1.7,
+            fontSize: 18, 
+            height: 1.6,
             fontWeight: FontWeight.w500,
           ),
         ),

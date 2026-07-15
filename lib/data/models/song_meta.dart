@@ -4,7 +4,8 @@ class SongMeta {
   final int duration;
   final String? album;
   final String? artworkUrl;
-  final int position; // Current playback position in ms
+  final int position;    // Current playback position in ms
+  final bool isPlaying;  // Track playback state
 
   SongMeta({
     required this.title,
@@ -13,6 +14,7 @@ class SongMeta {
     this.album,
     this.artworkUrl,
     this.position = 0,
+    this.isPlaying = false,
   });
 
   factory SongMeta.fromJson(Map<String, dynamic> json) {
@@ -23,6 +25,7 @@ class SongMeta {
       album: json['album'] as String?,
       artworkUrl: json['artworkUrl'] as String?,
       position: json['position'] as int? ?? 0,
+      isPlaying: json['isPlaying'] as bool? ?? false,
     );
   }
 
@@ -33,5 +36,6 @@ class SongMeta {
     'album': album,
     'artworkUrl': artworkUrl,
     'position': position,
+    'isPlaying': isPlaying,
   };
 }

@@ -344,15 +344,19 @@ class ApiService {
           .timeout(const Duration(seconds: 15));
       if (response.statusCode == 200) {
         final data = json.decode(response.body) as List;
-        return data.map<SongMeta>((item) => SongMeta(
-              title: item['trackName'] as String? ?? 'Unknown',
-              artist: item['artistName'] as String? ?? 'Unknown',
-              duration: item['duration'] as int? ?? 0,
-              album: item['albumName'] as String?,
-            )).toList();
+        return data.map<SongMeta>((item) {
+          // FIX: LRCLIB returns duration as a double. Parse it safely.
+          final durationDouble = (item['duration'] as num?)?.toDouble() ?? 0.0;
+          return SongMeta(
+            title: item['trackName'] as String? ?? 'Unknown',
+            artist: item['artistName'] as String? ?? 'Unknown',
+            duration: (durationDouble * 1000).toInt(), // Convert to int ms
+            album: item['albumName'] as String?,
+          );
+        }).toList();
       }
     } catch (e) {
-      // Ignore
+      debugPrint("Search Error: $e");
     }
     return [];
   }

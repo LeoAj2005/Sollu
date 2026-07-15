@@ -2,7 +2,7 @@
 
 # Sollu
 
-Sollu is a Flutter application designed to fetch and download lyrics for the song you are currently listening to. Built with a strong focus on the Indian music ecosystem, it seamlessly supports regional languages alongside English, wrapped in a beautifully customized typographic experience.
+Sollu is a Flutter application designed to fetch and download lyrics for the song you are currently listening to.
 
 ---
 

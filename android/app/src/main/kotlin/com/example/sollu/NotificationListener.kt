@@ -61,8 +61,11 @@ class NotificationListener : NotificationListenerService() {
             0 
         }
         
-        // Only stream the updates if this specific controller is actively playing
-        if (controller.playbackState?.state == PlaybackState.STATE_PLAYING) {
+        val playbackState = controller.playbackState?.state
+        val isPlaying = playbackState == PlaybackState.STATE_PLAYING
+        
+        // Stream updates when actively playing or paused
+        if (playbackState == PlaybackState.STATE_PLAYING || playbackState == PlaybackState.STATE_PAUSED) {
             activeController = controller // Save the active controller globally
             
             val position = controller.playbackState?.position?.toInt() ?: 0
@@ -71,7 +74,8 @@ class NotificationListener : NotificationListenerService() {
                 "title" to title,
                 "artist" to artist,
                 "duration" to duration,
-                "position" to position
+                "position" to position,
+                "isPlaying" to isPlaying // NEW
             )
             
             MainActivity.eventSink?.success(songData)

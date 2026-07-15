@@ -72,12 +72,7 @@ class _LyricsViewScreenState extends ConsumerState<LyricsViewScreen> with Widget
                 ref.read(lyricsRefreshTriggerProvider.notifier).state++;
                 Navigator.pop(context);
               }),
-            if (enabledSources['Deezer'] ?? false)
-              _buildDialogOption(context, "Deezer (Synced)", currentSource == "Deezer", () {
-                ref.read(forceSourceProvider.notifier).state = "Deezer";
-                ref.read(lyricsRefreshTriggerProvider.notifier).state++;
-                Navigator.pop(context);
-              }),
+            // Deezer block successfully removed
             if (enabledSources['Netease'] ?? false)
               _buildDialogOption(context, "Netease (Synced)", currentSource == "Netease", () {
                 ref.read(forceSourceProvider.notifier).state = "Netease";

@@ -48,8 +48,7 @@ final enabledSourcesProvider = StateNotifierProvider<EnabledSourcesNotifier, Map
 class EnabledSourcesNotifier extends StateNotifier<Map<String, bool>> {
   EnabledSourcesNotifier() : super({
     'LRCLIB': true,
-    'Deezer': true,
-    'Netease': true,
+    'Netease': true, // Deezer is successfully removed
     'Lyrics.ovh': true,
   });
 
@@ -140,7 +139,7 @@ final overlayLyricsPusherProvider = Provider((ref) {
     }
   });
 
-  // 3. FIX: Active structural match targeting the continuous playback position tracking stream
+  // 3. Active structural match targeting the continuous playback position tracking stream
   ref.listen<AsyncValue<SongMeta?>>(currentSongProvider, (_, asyncSong) {
     final song = asyncSong.value;
     if (ref.read(bubbleToggleProvider) && song != null) {
