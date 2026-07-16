@@ -8,8 +8,7 @@ import '../models/lyrics_type.dart';
 
 class ApiService {
   final http.Client _client = http.Client();
-  static const String _neteaseWorker =
-      'https://gentle-morning-7966.nullbyteai01.workers.dev';
+  static const String _neteaseWorker = 'https://gentle-morning-7966.nullbyteai01.workers.dev';
   static const String _userAgent = 'Sollu Lyrics App (Flutter)';
 
   // Normalize: strip spaces and non-word characters, lower-case, Unicode-aware
@@ -33,74 +32,53 @@ class ApiService {
     throw Exception("Failed after $retries retries");
   }
 
-  /// Fetches lyrics with a single request per source, collecting both synced and plain.
+  /// Fetches lyrics concurrently from all enabled sources and prioritizes synced lyrics.
   Future<SongWithLyrics?> fetchLyrics(
     SongMeta song,
     Map<String, bool> enabledSources, {
     String? forceSource,
   }) async {
-    bool useLrclib =
-        forceSource == null ? (enabledSources['LRCLIB'] ?? false) : forceSource == 'LRCLIB';
-    bool useNetease =
-        forceSource == null ? (enabledSources['Netease'] ?? false) : forceSource == 'Netease';
-    bool useOvh =
-        forceSource == null ? (enabledSources['Lyrics.ovh'] ?? false) : forceSource == 'Lyrics.ovh';
+    final bool useLrclib = forceSource == null ? (enabledSources['LRCLIB'] ?? false) : forceSource == 'LRCLIB';
+    final bool useNetease = forceSource == null ? (enabledSources['Netease'] ?? false) : forceSource == 'Netease';
+    final bool useOvh = forceSource == null ? (enabledSources['Lyrics.ovh'] ?? false) : forceSource == 'Lyrics.ovh';
 
     debugPrint("=========================================");
-    debugPrint("fetchLyrics START");
+    debugPrint("fetchLyrics START (Concurrent Mode)");
     debugPrint("Song: ${song.title} by ${song.artist}");
-    debugPrint("forceSource: $forceSource");
     debugPrint("Will use -> LRCLIB: $useLrclib, Netease: $useNetease, Ovh: $useOvh");
     debugPrint("=========================================");
 
-    final List<SongWithLyrics> syncedCandidates = [];
-    final List<SongWithLyrics> plainCandidates = [];
+    // Create a list of futures to run concurrently
+    final List<Future<SongWithLyrics?>> futures = [];
+    
+    if (useLrclib) futures.add(_tryLrclib(song));
+    if (useNetease) futures.add(_tryNetease(song));
+    if (useOvh) futures.add(_tryLyricsOvh(song));
 
-    // 1. LRCLIB
+    if (futures.isEmpty) return null;
+
+    // Wait for all HTTP requests to resolve simultaneously
+    final List<SongWithLyrics?> results = await Future.wait(futures);
+
+    // Filter out null responses into a clean list
+    final List<SongWithLyrics> candidates = results.whereType<SongWithLyrics>().toList();
+
+    if (candidates.isEmpty) {
+      debugPrint("fetchLyrics END (No lyrics found from any enabled source)");
+      return null;
+    }
+
+    // Prioritize Synced Lyrics first (LRCLIB > Netease)
     if (useLrclib) {
-      final result = await _tryLrclib(song);
-      if (result != null) {
-        if (result.lyricsType == LyricsType.synced) {
-          syncedCandidates.add(result);
-        } else if (result.lyricsType == LyricsType.plain) {
-          plainCandidates.add(result);
-        }
-      }
+      final lrclibMatch = candidates.firstWhere((c) => c.source == "LRCLIB" && c.lyricsType == LyricsType.synced, orElse: () => candidates.first);
+      if (lrclibMatch.lyricsType == LyricsType.synced) return lrclibMatch;
     }
+    
+    final syncedMatch = candidates.firstWhere((c) => c.lyricsType == LyricsType.synced, orElse: () => candidates.first);
+    if (syncedMatch.lyricsType == LyricsType.synced) return syncedMatch;
 
-    // 2. Netease
-    if (useNetease) {
-      final result = await _tryNetease(song);
-      if (result != null) {
-        if (result.lyricsType == LyricsType.synced) {
-          syncedCandidates.add(result);
-        } else if (result.lyricsType == LyricsType.plain) {
-          plainCandidates.add(result);
-        }
-      }
-    }
-
-    // 3. Lyrics.ovh (plain only)
-    if (useOvh) {
-      final result = await _tryLyricsOvh(song);
-      if (result != null && result.lyricsType == LyricsType.plain) {
-        plainCandidates.add(result);
-      }
-    }
-
-    // Choose synced result with priority: LRCLIB > Netease
-    // Since we added in that order, the first synced is the highest priority.
-    if (syncedCandidates.isNotEmpty) {
-      return syncedCandidates.first;
-    }
-
-    // Otherwise, return first plain candidate
-    if (plainCandidates.isNotEmpty) {
-      return plainCandidates.first;
-    }
-
-    debugPrint("fetchLyrics END (No lyrics found from any enabled source)");
-    return null;
+    // Fallback: If no synced lyrics are found, return the first available plain text candidate
+    return candidates.first;
   }
 
   // --------------------------------------------------------------------------
@@ -112,31 +90,23 @@ class ApiService {
         final stopwatch = Stopwatch()..start();
         const headers = {'User-Agent': _userAgent};
 
-        final durationSeconds =
-            song.duration > 1000 ? song.duration ~/ 1000 : song.duration;
+        final durationSeconds = song.duration > 1000 ? song.duration ~/ 1000 : song.duration;
 
         final params = <String, String>{
           'artist_name': song.artist,
           'track_name': song.title,
           if (durationSeconds > 0) 'duration': durationSeconds.toString(),
-          if (song.album != null && song.album!.isNotEmpty)
-            'album_name': song.album!,
+          if (song.album != null && song.album!.isNotEmpty) 'album_name': song.album!,
         };
 
         final uri = Uri.https('lrclib.net', '/api/get', params);
-        final response = await _client
-            .get(uri, headers: headers)
-            .timeout(const Duration(seconds: 15));
+        final response = await _client.get(uri, headers: headers).timeout(const Duration(seconds: 15));
 
         stopwatch.stop();
         if (response.statusCode != 200) {
-          debugPrint(
-              "LRCLIB failed: ${response.statusCode} (${stopwatch.elapsedMilliseconds}ms)");
+          debugPrint("LRCLIB failed: ${response.statusCode} (${stopwatch.elapsedMilliseconds}ms)");
           return null;
         }
-
-        debugPrint(
-            "LRCLIB (${durationSeconds > 0 ? 'duration $durationSeconds' : 'no duration'}${song.album != null && song.album!.isNotEmpty ? ', album: ${song.album}' : ''}): ${stopwatch.elapsedMilliseconds}ms");
 
         final data = json.decode(response.body);
         if (data != null && data['statusCode'] != 404) {
@@ -172,13 +142,9 @@ class ApiService {
     try {
       return await _retry(() async {
         final stopwatch = Stopwatch()..start();
-        // Explicitly encode components to prevent slashes from breaking the path
-        final uri = Uri.parse(
-          'https://api.lyrics.ovh/v1/${Uri.encodeComponent(song.artist)}/${Uri.encodeComponent(song.title)}'
-        );
-        final response = await _client
-            .get(uri, headers: {'User-Agent': _userAgent})
-            .timeout(const Duration(seconds: 15));
+        final uri = Uri.parse('https://api.lyrics.ovh/v1/${Uri.encodeComponent(song.artist)}/${Uri.encodeComponent(song.title)}');
+        
+        final response = await _client.get(uri, headers: {'User-Agent': _userAgent}).timeout(const Duration(seconds: 15));
         stopwatch.stop();
 
         if (response.statusCode != 200) {
@@ -186,7 +152,6 @@ class ApiService {
           return null;
         }
 
-        debugPrint("Lyrics.ovh: ${stopwatch.elapsedMilliseconds}ms");
         final data = json.decode(response.body);
         final plainLyrics = data['lyrics'] as String?;
         if (plainLyrics != null && plainLyrics.trim().isNotEmpty) {
@@ -218,18 +183,29 @@ class ApiService {
         final stopwatch = Stopwatch()..start();
         final mainArtist = song.artist.split(',').first.trim();
         final searchQuery = '${song.title} $mainArtist';
-        final searchUrl = Uri.parse(
-            '$_neteaseWorker/api/search/get?s=${Uri.encodeQueryComponent(searchQuery)}&type=1&offset=0&limit=10');
+        
+        // Clean URL building via Uri.parse parsing queryParameters natively
+        final baseWorkerUri = Uri.parse(_neteaseWorker);
+        final searchUrl = Uri(
+          scheme: baseWorkerUri.scheme,
+          host: baseWorkerUri.host,
+          path: '${baseWorkerUri.path}/api/search/get',
+          queryParameters: {
+            's': searchQuery,
+            'type': '1',
+            'offset': '0',
+            'limit': '10',
+          },
+        );
 
-        final searchRes = await _client
-            .get(
+        final searchRes = await _client.get(
           searchUrl,
           headers: {
             'Referer': 'https://music.163.com',
             'User-Agent': _userAgent,
           },
-        )
-            .timeout(const Duration(seconds: 15));
+        ).timeout(const Duration(seconds: 15));
+        
         stopwatch.stop();
 
         if (searchRes.statusCode != 200) {
@@ -237,45 +213,36 @@ class ApiService {
           return null;
         }
 
-        debugPrint("Netease Search: ${stopwatch.elapsedMilliseconds}ms");
         final searchData = json.decode(searchRes.body);
-        if (searchData['code'] == 200 &&
-            (searchData['result']['songCount'] ?? 0) > 0) {
+        if (searchData['code'] == 200 && (searchData['result']['songCount'] ?? 0) > 0) {
           final songs = searchData['result']['songs'] as List;
           Map<String, dynamic>? matchedSong;
 
           final targetNormalized = _normalize(song.artist);
 
           for (var s in songs) {
-            final artists = (s['artists'] as List?)
-                    ?.map((a) => a['name'] as String? ?? '')
-                    .toList() ??
-                [];
-            // Symmetric matching
+            final artists = (s['artists'] as List?)?.map((a) => a['name'] as String? ?? '').toList() ?? [];
             if (artists.any((a) {
               final norm = _normalize(a);
-              return norm.contains(targetNormalized) ||
-                  targetNormalized.contains(norm);
+              return norm.contains(targetNormalized) || targetNormalized.contains(norm);
             })) {
               matchedSong = s as Map<String, dynamic>?;
               break;
             }
           }
+          
           matchedSong ??= songs.first as Map<String, dynamic>?;
           final songId = matchedSong?['id'];
 
           if (songId != null) {
-            final lyricsUrl = Uri.parse(
-                '$_neteaseWorker/api/song/lyric?id=$songId&lv=1&kv=1&tv=-1');
-            final lyricsRes = await _client
-                .get(
+            final lyricsUrl = Uri.parse('$_neteaseWorker/api/song/lyric?id=$songId&lv=1&kv=1&tv=-1');
+            final lyricsRes = await _client.get(
               lyricsUrl,
               headers: {
                 'Referer': 'https://music.163.com',
                 'User-Agent': _userAgent,
               },
-            )
-                .timeout(const Duration(seconds: 15));
+            ).timeout(const Duration(seconds: 15));
 
             if (lyricsRes.statusCode == 200) {
               final lyricsData = json.decode(lyricsRes.body);
@@ -317,9 +284,7 @@ class ApiService {
           'limit': '1',
         },
       );
-      final response = await _client
-          .get(uri, headers: {'User-Agent': _userAgent})
-          .timeout(const Duration(seconds: 10));
+      final response = await _client.get(uri, headers: {'User-Agent': _userAgent}).timeout(const Duration(seconds: 10));
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
         if (data['resultCount'] > 0) {
@@ -328,7 +293,7 @@ class ApiService {
         }
       }
     } catch (e) {
-      // Ignore
+      // Clean silent fail
     }
     return null;
   }
@@ -339,18 +304,15 @@ class ApiService {
   Future<List<SongMeta>> searchSongs(String query) async {
     try {
       final uri = Uri.https('lrclib.net', '/api/search', {'q': query});
-      final response = await _client
-          .get(uri, headers: {'User-Agent': _userAgent})
-          .timeout(const Duration(seconds: 15));
+      final response = await _client.get(uri, headers: {'User-Agent': _userAgent}).timeout(const Duration(seconds: 15));
       if (response.statusCode == 200) {
         final data = json.decode(response.body) as List;
         return data.map<SongMeta>((item) {
-          // FIX: LRCLIB returns duration as a double. Parse it safely.
           final durationDouble = (item['duration'] as num?)?.toDouble() ?? 0.0;
           return SongMeta(
             title: item['trackName'] as String? ?? 'Unknown',
             artist: item['artistName'] as String? ?? 'Unknown',
-            duration: (durationDouble * 1000).toInt(), // Convert to int ms
+            duration: (durationDouble * 1000).toInt(),
             album: item['albumName'] as String?,
           );
         }).toList();
@@ -359,12 +321,5 @@ class ApiService {
       debugPrint("Search Error: $e");
     }
     return [];
-  }
-
-  // --------------------------------------------------------------------------
-  // Cleanup
-  // --------------------------------------------------------------------------
-  void dispose() {
-    _client.close();
   }
 }
